@@ -64,6 +64,10 @@ func NewErrorReader(err error) *ErrorReader {
 	return &ErrorReader{err: err}
 }
 
+func (e *ErrorReader) Get(_ context.Context, _ pipeline.ObjectGet) *pipeline.Item {
+	return &pipeline.Item{Err: e.err}
+}
+
 func (e *ErrorReader) Read(_ context.Context, _ pipeline.ObjectQuery) pipeline.Receiver[pipeline.Item] {
 	return worker.NewValueReceiver(pipeline.Item{Err: e.err})
 }
@@ -592,6 +596,7 @@ func TestPipeline_Error(t *testing.T) {
 
 type testcase struct {
 	name        string
+	flags       pipeline.Flag
 	model       string
 	tuples      []string
 	objectType  string
@@ -672,6 +677,158 @@ var cases = []testcase{
 		subjectType: "user",
 		subjectID:   "bob",
 		expected:    []string{"resource:document_1", "resource:document_2"},
+	},
+	{
+		name:  "difference with direct subtract user and wildcard",
+		flags: pipeline.FlagOptimizeSubtract,
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type document
+			relations
+				define blocked: [user, user:*]
+				define rel_a: [user] or blocked		
+				define rel_b: [user] or rel_a
+				define rel_c: [user] or rel_b
+				define rel_x: [user, user:*] or rel_y
+				define rel_y: [user] or rel_z
+				define rel_z: [user, user:*] or rel_c
+				define viewer: [user] but not rel_x
+		`,
+		tuples: []string{
+			"document:0#viewer@user:bob",
+			"document:1#viewer@user:bob",
+			"document:2#viewer@user:bob",
+			"document:3#viewer@user:bob",
+			"document:4#viewer@user:bob",
+			"document:5#viewer@user:bob",
+			"document:6#viewer@user:bob",
+			"document:7#viewer@user:bob",
+			"document:8#viewer@user:bob",
+			"document:9#viewer@user:bob",
+			"document:0#rel_x@user:*",
+			"document:1#rel_x@user:bob",
+			"document:2#rel_y@user:bob",
+			"document:3#rel_x@user:bob",
+			"document:4#rel_x@user:*",
+			"document:5#blocked@user:bob",
+			"document:6#blocked@user:*",
+			"document:7#blocked@user:bobette",
+			"document:8#rel_x@user:bobette",
+			"document:9#rel_a@user:bobette",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected: []string{
+			"document:7",
+			"document:8",
+			"document:9",
+		},
+	},
+	{
+		name:  "difference with direct subtract wildcard only",
+		flags: pipeline.FlagOptimizeSubtract,
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type document
+			relations
+				define blocked: [user:*]
+				define rel_a: [user:*] or blocked		
+				define rel_b: [user:*] or rel_a
+				define rel_c: [user:*] or rel_b
+				define rel_x: [user:*] or rel_y
+				define rel_y: [user:*] or rel_z
+				define rel_z: [user:*] or rel_c
+				define viewer: [user] but not rel_x
+		`,
+		tuples: []string{
+			"document:0#viewer@user:bob",
+			"document:1#viewer@user:bob",
+			"document:2#viewer@user:bob",
+			"document:3#viewer@user:bob",
+			"document:4#viewer@user:bob",
+			"document:5#viewer@user:bob",
+			"document:6#viewer@user:bob",
+			"document:7#viewer@user:bob",
+			"document:8#viewer@user:bob",
+			"document:9#viewer@user:bob",
+			"document:0#rel_x@user:*",
+			"document:1#rel_y@user:*",
+			"document:2#rel_z@user:*",
+			"document:3#rel_a@user:*",
+			"document:4#rel_b@user:*",
+			"document:5#rel_c@user:*",
+			"document:6#blocked@user:*",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected: []string{
+			"document:7",
+			"document:8",
+			"document:9",
+		},
+	},
+	{
+		name:  "difference with direct subtract wildcard only with intersection",
+		flags: pipeline.FlagOptimizeSubtract,
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type document
+			relations
+				define blocked: [user:*]
+				define rel_a: [user:*] and blocked		
+				define rel_b: [user:*] or rel_a
+				define rel_c: [user:*] or rel_b
+				define rel_x: [user:*] or rel_y
+				define rel_y: [user:*] or rel_z
+				define rel_z: [user:*] or rel_c
+				define viewer: [user] but not rel_x
+		`,
+		tuples: []string{
+			"document:0#viewer@user:bob",
+			"document:1#viewer@user:bob",
+			"document:2#viewer@user:bob",
+			"document:3#viewer@user:bob",
+			"document:4#viewer@user:bob",
+			"document:5#viewer@user:bob",
+			"document:6#viewer@user:bob",
+			"document:7#viewer@user:bob",
+			"document:8#viewer@user:bob",
+			"document:9#viewer@user:bob",
+			"document:0#rel_x@user:*",
+			"document:1#rel_y@user:*",
+			"document:2#rel_z@user:*",
+			"document:3#rel_a@user:*",
+			"document:4#rel_b@user:*",
+			"document:5#rel_c@user:*",
+			"document:6#rel_a@user:*",
+			"document:6#blocked@user:*",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected: []string{
+			"document:3",
+			"document:7",
+			"document:8",
+			"document:9",
+		},
 	},
 	{
 		name: "recursive_ttu_intersection",
@@ -2569,7 +2726,7 @@ func BenchmarkPipeline(b *testing.B) {
 				pipeline.WithStoreValidator(validator),
 			)
 
-			builder, err := pipeline.NewBuilder(reader)
+			builder, err := pipeline.NewBuilder(reader, pipeline.WithFlags(tc.flags))
 			require.NoError(b, err)
 
 			spec := pipeline.Spec{
@@ -2631,7 +2788,7 @@ func TestPipeline(t *testing.T) {
 				pipeline.WithStoreValidator(validator),
 			)
 
-			builder, err := pipeline.NewBuilder(reader)
+			builder, err := pipeline.NewBuilder(reader, pipeline.WithFlags(tc.flags))
 			require.NoError(t, err)
 
 			spec := pipeline.Spec{

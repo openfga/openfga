@@ -12,6 +12,9 @@ func TestIPaddressCELBinaryBinding(t *testing.T) {
 	addr, err := ParseIPAddress("192.168.1.1")
 	require.NoError(t, err)
 
+	mappedAddr, err := ParseIPAddress("::ffff:192.168.1.1")
+	require.NoError(t, err)
+
 	tests := []struct {
 		name   string
 		lhs    ref.Val
@@ -28,6 +31,39 @@ func TestIPaddressCELBinaryBinding(t *testing.T) {
 			name:   "ip_not_in_cidr",
 			lhs:    addr,
 			rhs:    types.String("10.0.0.0/8"),
+			result: types.Bool(false),
+		},
+		{
+			// IPv4-mapped IPv6 form of 192.168.1.1 must match an IPv4 CIDR.
+			name:   "ipv4_mapped_in_cidr",
+			lhs:    mappedAddr,
+			rhs:    types.String("192.168.1.0/24"),
+			result: types.Bool(true),
+		},
+		{
+			name:   "ipv4_mapped_not_in_cidr",
+			lhs:    mappedAddr,
+			rhs:    types.String("10.0.0.0/8"),
+			result: types.Bool(false),
+		},
+		{
+			// The same IPv4 range expressed as an IPv4-mapped IPv6 CIDR must
+			// match both an IPv4-mapped address and a plain IPv4 address.
+			name:   "ipv4_mapped_in_mapped_cidr",
+			lhs:    mappedAddr,
+			rhs:    types.String("::ffff:192.168.1.0/120"),
+			result: types.Bool(true),
+		},
+		{
+			name:   "ip_in_mapped_cidr",
+			lhs:    addr,
+			rhs:    types.String("::ffff:192.168.1.0/120"),
+			result: types.Bool(true),
+		},
+		{
+			name:   "ip_not_in_mapped_cidr",
+			lhs:    addr,
+			rhs:    types.String("::ffff:10.0.0.0/104"),
 			result: types.Bool(false),
 		},
 		{

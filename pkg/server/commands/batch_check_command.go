@@ -9,29 +9,18 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type BatchCheckQuery struct {
-	sharedCheckResources       *shared.SharedDatastoreResources
-	cacheSettings              config.CacheSettings
-	checkResolver              graph.CheckResolver
-	datastore                  storage.RelationshipTupleReader
-	logger                     logger.Logger
-	maxChecksAllowed           uint32
-	maxConcurrentChecks        uint32
-	typesys                    *typesystem.TypeSystem
-	datastoreThrottlingEnabled bool
-	datastoreThrottleThreshold int
-	datastoreThrottleDuration  time.Duration
+	logger              logger.Logger
+	maxChecksAllowed    uint32
+	maxConcurrentChecks uint32
+	checker             Checker
 }
 
 type BatchCheckCommandParams struct {
@@ -42,8 +31,11 @@ type BatchCheckCommandParams struct {
 }
 
 type BatchCheckOutcome struct {
-	CheckResponse *graph.ResolveCheckResponse
-	Err           error
+	Allowed             bool
+	DatastoreQueryCount uint32
+	DatastoreItemCount  uint64
+	Duration            time.Duration
+	Err                 error
 }
 
 type BatchCheckMetadata struct {
@@ -72,13 +64,6 @@ type checkAndCorrelationIDs struct {
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCacheOptions(sharedCheckResources *shared.SharedDatastoreResources, cacheSettings config.CacheSettings) BatchCheckQueryOption {
-	return func(c *BatchCheckQuery) {
-		c.sharedCheckResources = sharedCheckResources
-		c.cacheSettings = cacheSettings
-	}
-}
-
 func WithBatchCheckCommandLogger(l logger.Logger) BatchCheckQueryOption {
 	return func(bq *BatchCheckQuery) {
 		bq.logger = l
@@ -97,26 +82,12 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func WithBatchCheckDatastoreThrottler(enabled bool, threshold int, duration time.Duration) BatchCheckQueryOption {
-	return func(bq *BatchCheckQuery) {
-		bq.datastoreThrottlingEnabled = enabled
-		bq.datastoreThrottleThreshold = threshold
-		bq.datastoreThrottleDuration = duration
-	}
-}
-
-func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
+func NewBatchCheckCommand(checker Checker, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
-		datastore:           datastore,
-		checkResolver:       checkResolver,
-		typesys:             typesys,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
-		cacheSettings:       config.NewDefaultCacheSettings(),
-		sharedCheckResources: &shared.SharedDatastoreResources{
-			CacheController: cachecontroller.NewNoopCacheController(),
-		},
+		checker:             checker,
 	}
 
 	for _, opt := range opts {
@@ -146,7 +117,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
 	cacheKeyMap := make(map[keys.Key]*checkAndCorrelationIDs)
 	for _, check := range params.Checks {
-		key := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
+		key := generateCacheKeyFromCheck(check, params.StoreID, params.AuthorizationModelID)
 
 		if item, ok := cacheKeyMap[key]; ok {
 			item.CorrelationIDs = append(item.CorrelationIDs, CorrelationID(check.GetCorrelationId()))
@@ -178,19 +149,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			default:
 			}
 
-			checkQuery := NewCheckCommand(
-				bq.datastore,
-				bq.checkResolver,
-				bq.typesys,
-				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
-				WithCheckDatastoreThrottler(
-					bq.datastoreThrottlingEnabled,
-					bq.datastoreThrottleThreshold,
-					bq.datastoreThrottleDuration,
-				),
-			)
-
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
 				TupleKey:         check.GetTupleKey(),
@@ -199,27 +157,26 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Consistency:      params.Consistency,
 			}
 
-			response, metadata, err := checkQuery.Execute(ctx, checkParams)
-
-			resultMap.Store(key, &BatchCheckOutcome{
-				CheckResponse: response,
-				Err:           err,
-			})
-
-			if metadata != nil {
-				if metadata.DispatchThrottled.Load() {
-					dispatchThrottleCount.Add(1)
-				}
-				totalDispatchCount.Add(metadata.DispatchCounter.Load())
-
-				if metadata.DatastoreThrottled.Load() {
-					datastoreThrottleCount.Add(1)
-				}
+			res, err := bq.checker.Execute(ctx, checkParams)
+			if res == nil {
+				res = &CheckResult{}
 			}
-
-			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
-			totalItemCount.Add(response.GetResolutionMetadata().DatastoreItemCount)
-
+			resultMap.Store(key, &BatchCheckOutcome{
+				Allowed:             res.Allowed,
+				DatastoreQueryCount: res.DatastoreQueryCount,
+				DatastoreItemCount:  res.DatastoreItemCount,
+				Duration:            res.Duration,
+				Err:                 err,
+			})
+			totalDispatchCount.Add(res.DispatchCount)
+			if res.DispatchThrottled {
+				dispatchThrottleCount.Add(1)
+			}
+			totalQueryCount.Add(res.DatastoreQueryCount)
+			totalItemCount.Add(res.DatastoreItemCount)
+			if res.WasThrottled {
+				datastoreThrottleCount.Add(1)
+			}
 			return nil
 		})
 	}

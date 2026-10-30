@@ -2671,9 +2671,13 @@ func TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
 
-	require.Eventually(t, func() bool {
-		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
-	}, 2*time.Second, 10*time.Millisecond, "default consistency should populate iterator cache")
+	// Wait for all background drain goroutines to complete before measuring cache state.
+	// The WaitGroup tracks every CachingIterator drain goroutine; cache.Set() is called
+	// before wg.Done() (LIFO defer ordering in drainInBackground), so when Wait() returns
+	// all cache entries from the default-consistency check are guaranteed to be written.
+	s.sharedDatastoreResources.WaitGroup.Wait()
+	require.NotEmpty(t, cache.KeysWithPrefix(testCachePrefix),
+		"default consistency should populate iterator cache")
 
 	// Wait for background cache population to fully settle before measuring.
 	var keysCountBefore int
@@ -2785,4 +2789,31 @@ func TestV2CheckWithIteratorCache_Conditions(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
 	}, 2*time.Second, 10*time.Millisecond, "iterator cache should contain entries for conditioned model")
+}
+
+func TestWithServiceName(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("defaults_to_openfga_service_name", func(t *testing.T) {
+		ds := memory.New()
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, openfgav1.OpenFGAService_ServiceDesc.ServiceName, s.serviceName)
+	})
+
+	t.Run("overrides_service_name", func(t *testing.T) {
+		ds := memory.New()
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithServiceName("openfga.v1.ShadowOpenFGAService"),
+		)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, "openfga.v1.ShadowOpenFGAService", s.serviceName)
+	})
 }

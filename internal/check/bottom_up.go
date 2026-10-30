@@ -157,10 +157,18 @@ func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authz
 	}
 }
 
+// setFlattenOperation flattens node's operands into terminal edges and dispatches them as a
+// union, so the bottom-up traversal doesn't spawn unnecessary goroutines for intermediate nodes.
 func (s *bottomUp) setFlattenOperation(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	var err error
 	var edges []*authzGraph.WeightedAuthorizationModelEdge
-	edges, err = s.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), s.strategy == recursive)
+	// Only skip node's own recursive relation (the one this bottom-up traversal is unwinding);
+	// an unrelated recursive relation reached along the way must still be flattened normally.
+	skipRecursiveRelation := ""
+	if s.strategy == recursive {
+		skipRecursiveRelation = node.GetRecursiveRelation()
+	}
+	edges, err = s.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), skipRecursiveRelation)
 	if err != nil {
 		return nil, err
 	}

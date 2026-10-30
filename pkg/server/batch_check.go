@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"errors"
+	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -15,14 +17,20 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/telemetry"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
+	startTime := time.Now()
+
 	ctx, span := tracer.Start(ctx, apimethod.BatchCheck.String(), trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "batch_size", Value: attribute.IntValue(len(req.GetChecks()))},
@@ -60,19 +68,68 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 	defer checkResolverCloser()
 
-	cmd := commands.NewBatchCheckCommand(
+	v1Checker := commands.NewCheckCommand(
 		s.datastore,
 		checkResolver,
 		typesys,
-		commands.WithBatchCheckCacheOptions(s.sharedDatastoreResources, s.cacheSettings),
-		commands.WithBatchCheckCommandLogger(s.logger),
-		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
-		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
-		commands.WithBatchCheckDatastoreThrottler(
+		commands.WithCheckCommandLogger(s.logger),
+		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
+		commands.WithCheckDatastoreThrottler(
 			s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
 			s.checkDatastoreThrottleThreshold,
 			s.checkDatastoreThrottleDuration,
 		),
+	)
+
+	var checker commands.Checker = v1Checker
+	var v2GraphResolveFailed bool
+	v2Enabled := s.featureFlagClient.Boolean(config.ExperimentalWeightedGraphCheck, storeID)
+	if v2Enabled {
+		mg, mgErr := s.authzModelGraphResolver.Resolve(ctx, storeID, req.GetAuthorizationModelId())
+		if mgErr == nil {
+			cacheInvalidationTime := time.Time{}
+			if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+				cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, storeID)
+			}
+
+			checker = commands.NewCheckQuery(
+				commands.WithCheckQueryV2Logger(s.logger),
+				commands.WithCheckQueryV2Datastore(s.datastore),
+				commands.WithCheckQueryV2MaxConcurrentReads(s.maxConcurrentReadsForCheck),
+				commands.WithCheckQueryV2DatastoreThrottling(
+					s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
+					s.checkDatastoreThrottleThreshold,
+					s.checkDatastoreThrottleDuration,
+				),
+				commands.WithCheckQueryV2Model(mg),
+				commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.CheckCache),
+				commands.WithCheckQueryV2QueryCacheEnabled(s.cacheSettings.ShouldCacheCheckQueries()),
+				commands.WithCheckQueryV2QueryCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+				commands.WithCheckQueryV2Planner(s.planner),
+				commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
+				commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
+				commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
+				commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
+				commands.WithCheckQueryV2Fallback(v1Checker),
+			)
+		} else if commands.IsV2CheckTerminalError(mgErr) {
+			return nil, mgErr
+		} else {
+			v2GraphResolveFailed = true
+			s.logger.WarnWithContext(ctx, "Weighted graph model resolution failed for batch check, falling back to main Check",
+				zap.Error(mgErr),
+				zap.String("store_id", storeID),
+				zap.String("model_id", req.GetAuthorizationModelId()),
+			)
+		}
+	}
+
+	cmd := commands.NewBatchCheckCommand(
+		checker,
+		commands.WithBatchCheckCommandLogger(s.logger),
+		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
+		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
@@ -127,20 +184,80 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(datastoreItemCount)
 
+	tookMs := time.Since(startTime).Milliseconds()
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(metadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		req.GetConsistency().String(),
+	).Observe(float64(tookMs))
+
 	duplicateChecks := "duplicate_checks"
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
 
+	if v2Enabled {
+		var v2CheckCount, v2FallbackCount int
+		if v2GraphResolveFailed {
+			v2FallbackCount = len(req.GetChecks())
+		} else if q, ok := checker.(*commands.CheckQueryV2); ok {
+			v2FallbackCount = q.FallbackCount()
+			v2CheckCount = len(req.GetChecks()) - metadata.DuplicateCheckCount - v2FallbackCount
+		}
+		span.SetAttributes(
+			attribute.Int("v2_check_count", v2CheckCount),
+			attribute.Int("v2_fallback_count", v2FallbackCount),
+		)
+		grpc_ctxtags.Extract(ctx).Set("v2_check_count", v2CheckCount)
+		grpc_ctxtags.Extract(ctx).Set("v2_fallback_count", v2FallbackCount)
+	}
+
 	batchResult := map[string]*openfgav1.BatchCheckSingleResult{}
 	for correlationID, outcome := range result {
 		batchResult[string(correlationID)] = transformCheckResultToProto(outcome)
-		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), methodName)
+		s.emitCheckDurationMetric(graph.ResolveCheckResponseMetadata{DatastoreQueryCount: outcome.DatastoreQueryCount, Duration: outcome.Duration}, methodName)
+	}
+
+	if v2Enabled && s.logger.Level() <= zap.InfoLevel {
+		s.logBatchCheckBreakingChanges(ctx, req, typesys, result)
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, metadata.DatastoreItemCount)
 
 	return &openfgav1.BatchCheckResponse{Result: batchResult}, nil
+}
+
+// logBatchCheckBreakingChanges emits a single aggregate log flagging potential
+// v2 (weighted-graph) resolution breaking changes across the whole batch.
+// Detection, memoization, and aggregation are owned by v2breaking.BatchReasoner;
+// errored checks are skipped. Results are emitted as one log line — a
+// deduplicated `reasons` list plus a `reasons_by_correlation_id` map attributing
+// each flagged check to its reason.
+func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
+	reasoner := v2breaking.NewBatchReasoner(typesys, len(req.GetChecks()))
+
+	for _, check := range req.GetChecks() {
+		outcome := result[commands.CorrelationID(check.GetCorrelationId())]
+		if outcome == nil || outcome.Err != nil {
+			continue
+		}
+		reasoner.Add(check.GetCorrelationId(), check.GetTupleKey())
+	}
+
+	if reasoner.Empty() {
+		return
+	}
+
+	s.logger.InfoWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
+		zap.String("store_id", req.GetStoreId()),
+		zap.String("model_id", req.GetAuthorizationModelId()),
+		zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+		zap.Strings("reasons", reasoner.Reasons()),
+		zap.Int("matched_checks", reasoner.MatchedChecks()),
+		zap.Any("reasons_by_correlation_id", reasoner.ReasonsByCorrelationID()),
+	)
 }
 
 // transformCheckResultToProto transforms the internal BatchCheckOutcome into the external-facing
@@ -154,7 +271,7 @@ func transformCheckResultToProto(outcome *commands.BatchCheckOutcome) *openfgav1
 		}
 	} else {
 		singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
-			Allowed: outcome.CheckResponse.Allowed,
+			Allowed: outcome.Allowed,
 		}
 	}
 

@@ -1166,6 +1166,72 @@ var ttuCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
+	// multi_recursive_ttu recurses through two independent branches, "parent" and "child".
+	{
+		Name: "multi_branch_recursive_ttu",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "multi-recursive:mr_direct", Relation: "multi_recursive_ttu", User: "user:mr_valid"},
+			// reachable through the parent branch alone
+			{Object: "multi-recursive:mr_parent_1", Relation: "parent", User: "multi-recursive:mr_direct"},
+			// reachable through the child branch alone
+			{Object: "multi-recursive:mr_child_1", Relation: "child", User: "multi-recursive:mr_direct"},
+			// reachable only by alternating both branches: mr_alt_2 -child-> mr_alt_1 -parent-> mr_child_1 -child-> mr_direct
+			{Object: "multi-recursive:mr_alt_1", Relation: "parent", User: "multi-recursive:mr_child_1"},
+			{Object: "multi-recursive:mr_alt_2", Relation: "child", User: "multi-recursive:mr_alt_1"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "multi_branch_recursive_ttu_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_direct", Relation: "multi_recursive_ttu", User: "user:mr_valid"},
+				Expectation: true,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_not_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_direct", Relation: "multi_recursive_ttu", User: "user:mr_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_parent_branch_only",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_parent_1", Relation: "multi_recursive_ttu", User: "user:mr_valid"},
+				Expectation: true,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_parent_branch_only_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_parent_1", Relation: "multi_recursive_ttu", User: "user:mr_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_child_branch_only",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_child_1", Relation: "multi_recursive_ttu", User: "user:mr_valid"},
+				Expectation: true,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_child_branch_only_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_child_1", Relation: "multi_recursive_ttu", User: "user:mr_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_alternating_branches_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_alt_1", Relation: "multi_recursive_ttu", User: "user:mr_valid"},
+				Expectation: true,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_alternating_branches_level_1_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_alt_1", Relation: "multi_recursive_ttu", User: "user:mr_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_alternating_branches_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_alt_2", Relation: "multi_recursive_ttu", User: "user:mr_valid"},
+				Expectation: true,
+			},
+			{
+				Name:        "multi_branch_recursive_ttu_alternating_branches_level_2_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "multi-recursive:mr_alt_2", Relation: "multi_recursive_ttu", User: "user:mr_invalid"},
+				Expectation: false,
+			},
+		},
+	},
 	{
 		Name: "mixed_use",
 		Tuples: []*openfgav1.TupleKey{

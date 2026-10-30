@@ -8,14 +8,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
@@ -35,33 +32,6 @@ const (
 // ─────────────────────────────────────────────────────────────────────────────
 // Metrics
 // ─────────────────────────────────────────────────────────────────────────────
-
-var (
-	v2IterCacheTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "v2_iterator_cache_total",
-		Help:      "Total v2 iterator cache operations.",
-	}, []string{"operation"})
-
-	v2IterCacheHits = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "v2_iterator_cache_hits",
-		Help:      "Total v2 iterator cache hits.",
-	}, []string{"operation"})
-
-	v2IterCacheAbandoned = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "v2_iterator_cache_abandoned",
-		Help:      "Total v2 iterator cache entries abandoned (exceeded max size).",
-	}, []string{"operation"})
-
-	v2IterCacheSize = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: build.ProjectName,
-		Name:      "v2_iterator_cache_entry_size",
-		Help:      "Number of tuples in cached iterator entries.",
-		Buckets:   []float64{1, 10, 50, 100, 250, 500, 1000},
-	}, []string{"operation"})
-)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MinimalCacheEntry - Optimized storage for cached tuples
@@ -140,6 +110,7 @@ type CachingIterator struct {
 	objectType string
 	relation   string
 	operation  string
+	method     string
 }
 
 // Ensure CachingIterator implements TupleIterator.
@@ -155,7 +126,7 @@ func newCachingIterator(
 	drainTimeout time.Duration,
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
-	objectType, relation, operation string,
+	objectType, relation, operation, method string,
 ) *CachingIterator {
 	// Cap initial capacity to avoid over-allocation for large maxSize values.
 	// Most queries return few tuples, so initialBufferCapacity is usually sufficient.
@@ -181,6 +152,7 @@ func newCachingIterator(
 		objectType:   objectType,
 		relation:     relation,
 		operation:    operation,
+		method:       method,
 	}
 }
 
@@ -206,7 +178,7 @@ func (c *CachingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if c.tuples != nil {
 		c.tuples = append(c.tuples, t)
 		if len(c.tuples) > c.maxSize {
-			v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+			tuplesCacheDiscardCounter.WithLabelValues(c.operation, c.method).Inc()
 			c.tuples = nil // Exceeded max size, abandon caching
 		}
 	}
@@ -278,7 +250,7 @@ func (c *CachingIterator) flush() {
 		}
 	}
 
-	v2IterCacheSize.WithLabelValues(c.operation).Observe(float64(len(entries)))
+	tuplesCacheSizeHistogram.WithLabelValues(c.operation, c.method).Observe(float64(len(entries)))
 
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
 		Entries:      entries,
@@ -335,7 +307,7 @@ func (c *CachingIterator) drainInBackground() {
 		for {
 			// Check for timeout before each iteration
 			if drainCtx.Err() != nil {
-				v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+				tuplesCacheDiscardCounter.WithLabelValues(c.operation, c.method).Inc()
 				c.mu.Lock()
 				c.tuples = nil // Don't cache incomplete results
 				c.mu.Unlock()
@@ -353,7 +325,7 @@ func (c *CachingIterator) drainInBackground() {
 				// On timeout or other errors, don't cache
 				c.tuples = nil
 				c.mu.Unlock()
-				v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+				tuplesCacheDiscardCounter.WithLabelValues(c.operation, c.method).Inc()
 				return nil, nil
 			}
 
@@ -364,7 +336,7 @@ func (c *CachingIterator) drainInBackground() {
 			}
 			c.tuples = append(c.tuples, t)
 			if len(c.tuples) > c.maxSize {
-				v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+				tuplesCacheDiscardCounter.WithLabelValues(c.operation, c.method).Inc()
 				c.tuples = nil
 				c.mu.Unlock()
 				return nil, nil

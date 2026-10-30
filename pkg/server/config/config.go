@@ -117,9 +117,11 @@ const (
 	ExperimentalShadowListObjects        = "shadow_list_objects"
 	ExperimentalDatastoreThrottling      = "datastore_throttling"
 	ExperimentalPipelineListObjects      = "pipeline_list_objects"
+	ExperimentalPipelineOptimizations    = "pipeline_optimizations"
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 	ExperimentalAuthZen                  = "authzen"
+	ExperimentalInlineExpressions        = "inline_expressions"
 )
 
 type DatastoreMetricsConfig struct {
@@ -617,6 +619,16 @@ func (cfg *Config) VerifyBinarySettings() error {
 
 		if cfg.Authn.Method != "none" {
 			return errors.New("the playground only supports authn method 'none'")
+		}
+	}
+
+	if cfg.Authn.Method == "oidc" {
+		// both are StringOrURI values (RFC 7519 §4.1.1, §4.1.3); whitespace is valid, so only reject strictly empty
+		if cfg.Authn.Issuer == "" {
+			return errors.New("'authn.oidc.issuer' config must be set when authn method is 'oidc'")
+		}
+		if cfg.Authn.Audience == "" {
+			return errors.New("'authn.oidc.audience' config must be set when authn method is 'oidc'")
 		}
 	}
 

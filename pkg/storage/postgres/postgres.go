@@ -417,7 +417,7 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	poolGetRows, err := NewPgxTxnGetRows(db, sb)
+	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -442,7 +442,7 @@ func (s *Datastore) Write(
 // return a map of all the existing keys.
 func selectAllExistingRowsForUpdate(ctx context.Context,
 	lockKeys []sqlcommon.TupleLockKey,
-	txn PgxQuery,
+	txn sqlcommon.Connector,
 	store string) (map[string]*openfgav1.Tuple, error) {
 	total := len(lockKeys)
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
@@ -615,7 +615,7 @@ func (s *Datastore) write(
 	}
 
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
-	existing, err := selectAllExistingRowsForUpdate(ctx, lockKeys, txn, store)
+	existing, err := selectAllExistingRowsForUpdate(ctx, lockKeys, &pgxTxConnector{tx: txn}, store)
 	if err != nil {
 		return err
 	}
@@ -673,7 +673,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 		Select(
 			"object_type", "object_id", "relation",
 			"_user",
-			"condition_name", "condition_context",
+			"condition_name", "condition_context", "inserted_at",
 		).
 		From("tuple").
 		Where(sq.Eq{
@@ -702,6 +702,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 		&record.User,
 		&conditionName,
 		&conditionContext,
+		&record.InsertedAt,
 	)
 
 	if err != nil {
@@ -774,7 +775,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	poolGetRows, err := NewPgxTxnGetRows(db, sb)
+	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -823,7 +824,7 @@ func (s *Datastore) ReadStartingWithUser(
 	if len(filter.Conditions) > 0 {
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	poolGetRows, err := NewPgxTxnGetRows(db, builder)
+	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), builder)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -857,7 +858,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows})
+	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows})
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -955,7 +956,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows})
+	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows})
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -980,7 +981,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return nil
 	}
 
-	pbdata, err := proto.Marshal(model)
+	pbdata, err := sqlcommon.DeterministicMarshalOpts.Marshal(model)
 	if err != nil {
 		return err
 	}
@@ -1422,7 +1423,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 
 // selectExistingRowsForWrite selects existing rows for the given keys and locks them FOR UPDATE.
 // The existing rows are added to the existing map.
-func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, txn PgxQuery, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple) error {
+func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, connector sqlcommon.Connector, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple) error {
 	inExpr, args := sqlcommon.BuildRowConstructorIN(keys)
 
 	sb := stbl.
@@ -1433,7 +1434,7 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 		Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...)).
 		Suffix("FOR UPDATE")
 
-	poolGetRows, err := NewPgxTxnGetRows(txn, sb)
+	poolGetRows, err := sqlcommon.NewRowGetter(connector, sb)
 	if err != nil {
 		return HandleSQLError(err)
 	}
