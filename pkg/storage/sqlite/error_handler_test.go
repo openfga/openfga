@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -32,6 +33,15 @@ func TestNewWithDBErrorHandler(t *testing.T) {
 			return ds.Write(ctx, "store", nil, []*openfgav1.TupleKey{{Object: "doc:1", Relation: "viewer", User: "user:1"}})
 		}},
 		{"transaction_commit", "commit", func(ctx context.Context, ds *Datastore) error {
+			return ds.Write(ctx, "store", nil, []*openfgav1.TupleKey{{Object: "doc:1", Relation: "viewer", User: "user:1"}})
+		}},
+		{"transaction_delete", "delete", func(ctx context.Context, ds *Datastore) error {
+			return ds.Write(ctx, "store", []*openfgav1.TupleKeyWithoutCondition{{Object: "doc:1", Relation: "viewer", User: "user:1"}}, nil)
+		}},
+		{"transaction_delete_rows_affected", "rows_affected", func(ctx context.Context, ds *Datastore) error {
+			return ds.Write(ctx, "store", []*openfgav1.TupleKeyWithoutCondition{{Object: "doc:1", Relation: "viewer", User: "user:1"}}, nil)
+		}},
+		{"transaction_changelog", "changelog", func(ctx context.Context, ds *Datastore) error {
 			return ds.Write(ctx, "store", nil, []*openfgav1.TupleKey{{Object: "doc:1", Relation: "viewer", User: "user:1"}})
 		}},
 		{"write", "exec", func(ctx context.Context, ds *Datastore) error {
@@ -76,8 +86,57 @@ func TestNewWithDBErrorHandler(t *testing.T) {
 			_, err := ds.FindLatestAuthorizationModel(ctx, "store")
 			return err
 		}},
+		{"model_query", "query", func(ctx context.Context, ds *Datastore) error {
+			_, err := ds.ReadAuthorizationModel(ctx, "store", "model")
+			return err
+		}},
+		{"latest_model_query", "query", func(ctx context.Context, ds *Datastore) error {
+			_, err := ds.FindLatestAuthorizationModel(ctx, "store")
+			return err
+		}},
+		{"models_query", "query", func(ctx context.Context, ds *Datastore) error {
+			_, _, err := ds.ReadAuthorizationModels(ctx, "store", storage.ReadAuthorizationModelsOptions{})
+			return err
+		}},
+		{"models_scan", "scan", func(ctx context.Context, ds *Datastore) error {
+			_, _, err := ds.ReadAuthorizationModels(ctx, "store", storage.ReadAuthorizationModelsOptions{})
+			return err
+		}},
+		{"models_rows", "rows", func(ctx context.Context, ds *Datastore) error {
+			_, _, err := ds.ReadAuthorizationModels(ctx, "store", storage.ReadAuthorizationModelsOptions{})
+			return err
+		}},
+		{"model_write", "exec", func(ctx context.Context, ds *Datastore) error {
+			return ds.WriteAuthorizationModel(ctx, "store", &openfgav1.AuthorizationModel{
+				Id: "model", SchemaVersion: "1.1",
+				TypeDefinitions: []*openfgav1.TypeDefinition{{Type: "user"}},
+			})
+		}},
+		{"list_query", "query", func(ctx context.Context, ds *Datastore) error {
+			_, _, err := ds.ListStores(ctx, storage.ListStoresOptions{})
+			return err
+		}},
+		{"list_scan", "scan", func(ctx context.Context, ds *Datastore) error {
+			_, _, err := ds.ListStores(ctx, storage.ListStoresOptions{})
+			return err
+		}},
 		{"list_rows", "rows", func(ctx context.Context, ds *Datastore) error {
 			_, _, err := ds.ListStores(ctx, storage.ListStoresOptions{})
+			return err
+		}},
+		{"assertions_write", "exec", func(ctx context.Context, ds *Datastore) error {
+			return ds.WriteAssertions(ctx, "store", "model", nil)
+		}},
+		{"assertions_query", "query", func(ctx context.Context, ds *Datastore) error {
+			_, err := ds.ReadAssertions(ctx, "store", "model")
+			return err
+		}},
+		{"changes_query", "query", func(ctx context.Context, ds *Datastore) error {
+			_, _, err := ds.ReadChanges(ctx, "store", storage.ReadChangesFilter{}, storage.ReadChangesOptions{})
+			return err
+		}},
+		{"changes_scan", "scan", func(ctx context.Context, ds *Datastore) error {
+			_, _, err := ds.ReadChanges(ctx, "store", storage.ReadChangesFilter{}, storage.ReadChangesOptions{})
 			return err
 		}},
 	} {
@@ -121,6 +180,15 @@ func TestNewWithDBNilErrorHandler(t *testing.T) {
 	require.EqualError(t, err, "initialize sqlite datastore: error handler must not be nil")
 }
 
+func TestNewWithDBMetrics(t *testing.T) {
+	db := sql.OpenDB(errorConnector{})
+	defer db.Close()
+	ds, err := NewWithDB(db, sqlcommon.NewConfig(sqlcommon.WithMetrics()))
+	require.NoError(t, err)
+	defer ds.Close()
+	require.NotNil(t, ds.dbStatsCollector)
+}
+
 type errorConnector struct {
 	mode string
 	err  error
@@ -158,8 +226,11 @@ func (c *errorConnection) BeginTx(context.Context, driver.TxOptions) (driver.Tx,
 	return errorTransaction{mode: c.mode, err: c.err}, nil
 }
 
-func (c *errorConnection) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
-	if c.mode == "commit" {
+func (c *errorConnection) ExecContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Result, error) {
+	if c.mode == "rows_affected" {
+		return errorResult{err: c.err}, nil
+	}
+	if c.mode == "commit" || (c.mode == "changelog" && !strings.Contains(query, "INSERT INTO changelog")) {
 		return driver.RowsAffected(1), nil
 	}
 	return nil, c.err
@@ -174,9 +245,20 @@ func (c *errorConnection) QueryContext(_ context.Context, query string, _ []driv
 		columns = []string{"authorization_model_id", "schema_version", "serialized_protobuf"}
 	} else if strings.Contains(query, "FROM store") {
 		columns = []string{"id", "name", "created_at", "updated_at"}
+	} else if strings.Contains(query, "FROM changelog") {
+		columns = []string{"ulid", "object_type", "object_id", "relation", "user_object_type",
+			"user_object_id", "user_relation", "operation", "condition_name", "condition_context", "inserted_at"}
 	}
-	return &errorRows{columns: columns, mode: c.mode, err: c.err, done: c.mode == "exec" || c.mode == "commit"}, nil
+	return &errorRows{columns: columns, mode: c.mode, err: c.err,
+		done: c.mode == "exec" || c.mode == "commit" || c.mode == "changelog"}, nil
 }
+
+type errorResult struct {
+	err error
+}
+
+func (r errorResult) LastInsertId() (int64, error) { return 0, r.err }
+func (r errorResult) RowsAffected() (int64, error) { return 0, r.err }
 
 type errorTransaction struct {
 	mode string
@@ -210,6 +292,12 @@ func (r *errorRows) Next(values []driver.Value) error {
 		return io.EOF
 	}
 	r.done = true
+	if r.mode == "delete" || r.mode == "rows_affected" {
+		copy(values, []driver.Value{
+			"store", "doc", "1", "viewer", "user", "1", "", nil, nil, "ulid", time.Now(),
+		})
+		return nil
+	}
 	// NULL cannot be scanned into the datastore's required string columns.
 	clear(values)
 	return nil
