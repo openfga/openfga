@@ -1066,6 +1066,44 @@ func TestFindLatestModel(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, latestModel.GetTypeDefinitions(), 1)
 	})
+
+	t.Run("returns_only_the_latest_model_of_the_store", func(t *testing.T) {
+		store := ulid.Make().String()
+		otherStore := ulid.Make().String()
+
+		// several older versions in the store
+		for i := 0; i < 3; i++ {
+			err := ds.WriteAuthorizationModel(ctx, store, testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type old`))
+			require.NoError(t, err)
+		}
+
+		// the latest model is a legacy one split over several rows
+		modelID := ulid.Make().String()
+		for _, typeName := range []string{"document", "user"} {
+			bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: typeName})
+			require.NoError(t, err)
+			_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+				store, modelID, schemaVersion, typeName, bytes, nil)
+			require.NoError(t, err)
+		}
+
+		// a newer model in another store must not be picked up
+		err := ds.WriteAuthorizationModel(ctx, otherStore, testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type other`))
+		require.NoError(t, err)
+
+		latestModel, err := ds.FindLatestAuthorizationModel(ctx, store)
+		require.NoError(t, err)
+		require.Equal(t, modelID, latestModel.GetId())
+		require.Len(t, latestModel.GetTypeDefinitions(), 2)
+		require.ElementsMatch(t, []string{"document", "user"},
+			[]string{latestModel.GetTypeDefinitions()[0].GetType(), latestModel.GetTypeDefinitions()[1].GetType()})
+	})
 }
 
 func TestReadFilterWithConditions(t *testing.T) {

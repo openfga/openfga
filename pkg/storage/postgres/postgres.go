@@ -935,10 +935,13 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	defer span.End()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
+	// Only read the rows of the latest model instead of the store's whole model history. A legacy
+	// model can span several rows with the same ID, so this filters on the ID rather than using LIMIT 1.
 	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
+		Where(sq.Expr("authorization_model_id = (SELECT MAX(authorization_model_id) FROM authorization_model WHERE store = ?)", store)).
 		OrderBy("authorization_model_id desc").ToSql()
 	if err != nil {
 		return nil, HandleSQLError(err)
