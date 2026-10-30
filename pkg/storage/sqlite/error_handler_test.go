@@ -109,7 +109,7 @@ func TestNewWithDBDefaultErrorHandler(t *testing.T) {
 	ds, err := NewWithDB(db, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
-	_, err = ds.GetStore(context.Background(), "store")
+	_, err = ds.ReadAuthorizationModel(context.Background(), "store", "model")
 	require.ErrorIs(t, err, storage.ErrNotFound)
 }
 
