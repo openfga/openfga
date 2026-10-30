@@ -3,7 +3,7 @@
 
 header:
   schema-version: 2.0.0
-  last-updated: '2026-01-12'
+  last-updated: '2026-10-30'
   last-reviewed: '2026-01-12'
   url: https://github.com/openfga/openfga
   project-si-source: https://raw.githubusercontent.com/openfga/.github/main/SECURITY-INSIGHTS.yml
