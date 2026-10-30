@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+- Added `sqlite.WithErrorHandler` to customise SQL error translation when constructing a SQLite datastore with `NewWithDB`. The default modernc translation and busy-retry policy are unchanged.
+
 ## [1.22.1] - 2026-10-27
 ### Changed
 - Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)
