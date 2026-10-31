@@ -113,6 +113,13 @@ type ListObjectsResolutionMetadata struct {
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
 	WasWeightedGraphUsed atomic.Bool
 
+	// DeadlineExceeded indicates that the ListObjects deadline cut the
+	// evaluation short, so the returned objects are partial results rather
+	// than the complete set. The deadline error itself is elided to return
+	// whatever was gathered, so callers that present the response (e.g. the
+	// server handler) must consult this flag to signal the truncation.
+	DeadlineExceeded atomic.Bool
+
 	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
 	CheckCounter atomic.Uint32
 }
@@ -482,11 +489,20 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		err := pool.Wait()
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			// The deadline error is elided below so that the results
+			// gathered so far can be returned, but those results are
+			// partial. Record the truncation on the resolution metadata
+			// (before resultsChan is closed, so consumers that read the
+			// metadata after the channel closes observe it) so the
+			// server handler can set a header indicating
+			// "deadline exceeded" on the response.
+			resolutionMetadata.DeadlineExceeded.Store(true)
+		}
 		if err != nil {
 			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
-			// TODO set header to indicate "deadline exceeded"
 		}
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
@@ -641,6 +657,12 @@ func (q *ListObjectsQuery) Execute(
 		p.Close() // ensure that the pipeline is closed after any early loop exits
 
 		if err := p.Err(); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				// As in the fallback algorithm, the deadline error is
+				// elided and the partial results are returned; record
+				// the truncation so it can be signalled to the caller.
+				res.ResolutionMetadata.DeadlineExceeded.Store(true)
+			}
 			// current list objects behavior is to elide context cancelation errors
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				if errors.Is(err, condition.ErrEvaluationFailed) {
@@ -844,6 +866,15 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			}
 		}
 		p.Close() // ensure that the pipeline is closed after any early loop exits
+
+		if errors.Is(errRx, context.DeadlineExceeded) || errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+			// The deadline error is elided below and the objects streamed
+			// so far stand, but they are partial. Record the truncation
+			// on the resolution metadata; the streaming handler cannot
+			// retroactively set a response header, so this flag is the
+			// signal available to callers and logs for streamed requests.
+			resolutionMetadata.DeadlineExceeded.Store(true)
+		}
 
 		if errRx != nil && !errors.Is(errRx, context.Canceled) && !errors.Is(errRx, context.DeadlineExceeded) {
 			if errors.Is(errRx, condition.ErrEvaluationFailed) {
