@@ -644,6 +644,12 @@ func (q *ListObjectsQuery) Execute(
 		for {
 			value, ok := p.Recv(timeoutCtx)
 			if !ok {
+				// Recv stops without recording an error when the deadline
+				// fires, and Close drops deadline errors, so p.Err() cannot
+				// report this truncation: record it from the context.
+				if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+					res.ResolutionMetadata.DeadlineExceeded.Store(true)
+				}
 				break
 			}
 

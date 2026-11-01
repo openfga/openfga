@@ -938,3 +938,104 @@ func TestListObjectsDeadlineExceeded(t *testing.T) {
 		require.False(t, resp.ResolutionMetadata.DeadlineExceeded.Load())
 	})
 }
+
+// blockingReadDatastore is a datastore whose reverse and userset reads block
+// until their context is done, as reads cut off by a deadline do.
+type blockingReadDatastore struct {
+	storage.OpenFGADatastore
+}
+
+func (b blockingReadDatastore) ReadStartingWithUser(ctx context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (b blockingReadDatastore) ReadUsersetTuples(ctx context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// TestListObjectsPipelineDeadlineExceeded verifies that the pipeline
+// (weighted graph) path of ListObjects records the deadline truncation:
+// when the deadline fires while the pipeline is still reading, Recv stops
+// without an error and Close drops the deadline error, so the flag must be
+// taken from the timeout context. A request that completes within its
+// deadline, or that stops at the max results, must not set it.
+func TestListObjectsPipelineDeadlineExceeded(t *testing.T) {
+	modelDsl := `
+		model
+			schema 1.1
+
+		type user
+
+		type document
+			relations
+				define viewer: [user]`
+
+	execute := func(t *testing.T, blocking bool, deadline time.Duration, maxResults uint32, tuples []string) *ListObjectsResponse {
+		t.Helper()
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+		ts, err := typesystem.NewAndValidate(context.Background(), model)
+		require.NoError(t, err)
+
+		datastore := storage.OpenFGADatastore(ds)
+		if blocking {
+			datastore = blockingReadDatastore{OpenFGADatastore: ds}
+		}
+
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
+
+		q, err := NewListObjectsQuery(
+			datastore,
+			checkResolver,
+			storeID,
+			WithListObjectsPipelineEnabled(true),
+			WithListObjectsDeadline(deadline),
+			WithListObjectsMaxResults(maxResults),
+		)
+		require.NoError(t, err)
+
+		resp, err := q.Execute(typesystem.ContextWithTypesystem(context.Background(), ts), &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:maria",
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.ResolutionMetadata.WasWeightedGraphUsed.Load(), "expected the pipeline path to answer")
+		return resp
+	}
+
+	t.Run("deadline_exceeded_records_truncation", func(t *testing.T) {
+		resp := execute(t, true, 100*time.Millisecond, 0, []string{"document:1#viewer@user:maria"})
+
+		require.Empty(t, resp.Objects)
+		require.True(t, resp.ResolutionMetadata.DeadlineExceeded.Load(),
+			"expected the deadline truncation to be recorded on the resolution metadata")
+	})
+
+	t.Run("completed_request_does_not_record_deadline_exceeded", func(t *testing.T) {
+		resp := execute(t, false, 10*time.Second, 0, []string{"document:1#viewer@user:maria"})
+
+		require.Equal(t, []string{"document:1"}, resp.Objects)
+		require.False(t, resp.ResolutionMetadata.DeadlineExceeded.Load())
+	})
+
+	t.Run("max_results_reached_does_not_record_deadline_exceeded", func(t *testing.T) {
+		resp := execute(t, false, 10*time.Second, 1, []string{
+			"document:1#viewer@user:maria",
+			"document:2#viewer@user:maria",
+		})
+
+		require.Len(t, resp.Objects, 1)
+		require.False(t, resp.ResolutionMetadata.DeadlineExceeded.Load())
+	})
+}
