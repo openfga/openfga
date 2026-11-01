@@ -481,6 +481,12 @@ func sanitizeTuplesWriteDelete(
 			// need to validate against condition and context
 			sameCondition := record.ConditionName == tk.GetCondition().GetName() &&
 				record.ConditionContext.String() == tk.GetCondition().GetContext().String()
+			if opts.OnDuplicateInsert == storage.OnDuplicateInsertReplace {
+				sameCondition = storage.SameCondition(
+					&openfgav1.RelationshipCondition{Name: record.ConditionName, Context: record.ConditionContext},
+					tk.GetCondition(),
+				)
+			}
 			switch opts.OnDuplicateInsert {
 			case storage.OnDuplicateInsertIgnore:
 				if sameCondition {

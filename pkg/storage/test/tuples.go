@@ -1136,6 +1136,30 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
+	t.Run("replace_duplicate_with_named_condition_without_context_is_noop", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10", Condition: &openfgav1.RelationshipCondition{
+			Name: "condition1",
+		}}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk},
+			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertReplace))
+		require.NoError(t, err)
+
+		// Only the first write is recorded. Datastores differ in whether they return a missing context as nil
+		// or as an empty one, so only the operation is compared.
+		readChangesOpts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		require.Equal(t, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, changes[0].GetOperation())
+	})
+
 	t.Run("replace_duplicate_with_identical_condition_is_noop", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10", Condition: &openfgav1.RelationshipCondition{

@@ -914,7 +914,7 @@ func GetDeleteWriteChangelogItems(
 				// If tuple conditions are different, we throw an error.
 				return nil, nil, nil, storage.TupleConditionConflictError(tk)
 			case storage.OnDuplicateInsertReplace:
-				if proto.Equal(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
+				if storage.SameCondition(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
 					continue
 				}
 				// Delete the existing tuple, so that it is inserted again with the new condition below.
