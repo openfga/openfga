@@ -946,6 +946,38 @@ func TestWriteCommand(t *testing.T) {
 			},
 			expectedResponse: &openfgav1.WriteResponse{},
 		},
+		{
+			name: "writes_with_replace_option",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(),
+					NewWriteOptsMatcher(storage.OnDuplicateInsertReplace, storage.OnMissingDeleteError)).Return(nil)
+			},
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+				OnDuplicate: "replace",
+			},
+			expectedResponse: &openfgav1.WriteResponse{},
+		},
+		{
+			name: "writes_with_unknown_on_duplicate_option",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
+			},
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+				OnDuplicate: "upsert",
+			},
+			expectedError: "invalid on_duplicate option: upsert",
+		},
 	}
 
 	for _, test := range tests {

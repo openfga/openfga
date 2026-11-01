@@ -1079,6 +1079,115 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
+	t.Run("replace_duplicate_with_new_condition_context", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+		}}
+		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "updated"}),
+		}}
+		tk3 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "viewer", User: "user:10"}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		// Replacing an existing tuple with a different context, and writing a new tuple, should both succeed.
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2, tk3},
+			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertReplace))
+		require.NoError(t, err)
+
+		got, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: tk2.GetObject(), Relation: tk2.GetRelation(), User: tk2.GetUser()}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		if diff := cmp.Diff(tk2, got.GetKey(), protocmp.Transform()); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+
+		// The replacement is recorded as a delete of the old tuple followed by a write of the new one.
+		expectedChanges := []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk1,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+			{
+				TupleKey:  tuple.NewTupleKey(tk1.GetObject(), tk1.GetRelation(), tk1.GetUser()),
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			},
+			{
+				TupleKey:  tk2,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+			{
+				TupleKey:  tk3,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+		}
+
+		readChangesOpts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("replace_duplicate_with_identical_condition_is_noop", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+		}}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk},
+			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertReplace))
+		require.NoError(t, err)
+
+		// Ensure that there is only 1 insert reported
+		expectedChanges := []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+		}
+
+		readChangesOpts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("replace_duplicate_removes_condition", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+		}}
+		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10"}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2},
+			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertReplace))
+		require.NoError(t, err)
+
+		got, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: tk2.GetObject(), Relation: tk2.GetRelation(), User: tk2.GetUser()}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Nil(t, got.GetKey().GetCondition())
+	})
 	t.Run("inserting_a_tuple_twice_ignore_duplicate_batch", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}

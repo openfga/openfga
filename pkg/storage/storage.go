@@ -235,6 +235,11 @@ const (
 	// OnDuplicateInsertIgnore indicates that if an insert operation is attempted on a tuple that already exists,
 	// it should be ignored as a no-op and no error should be returned.
 	OnDuplicateInsertIgnore OnDuplicateInsert = 1
+
+	// OnDuplicateInsertReplace indicates that if an insert operation is attempted on a tuple that already exists,
+	// the existing tuple should be replaced, so that its condition and context are updated in the same transaction.
+	// If the condition and context are identical, the insert is a no-op.
+	OnDuplicateInsertReplace OnDuplicateInsert = 2
 )
 
 // TupleWriteOptions defines the options that can be used when writing tuples.

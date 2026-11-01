@@ -61,6 +61,8 @@ func parseOptionOnDuplicate(wr *openfgav1.WriteRequestWrites) (storage.OnDuplica
 		return storage.OnDuplicateInsertError, nil
 	case "ignore":
 		return storage.OnDuplicateInsertIgnore, nil
+	case "replace":
+		return storage.OnDuplicateInsertReplace, nil
 	default:
 		return storage.OnDuplicateInsertError, serverErrors.ValidationError(fmt.Errorf("invalid on_duplicate option: %s", wr.GetOnDuplicate()))
 	}
