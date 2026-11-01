@@ -982,9 +982,11 @@ func TestListObjectsPipelineDeadlineExceeded(t *testing.T) {
 		ts, err := typesystem.NewAndValidate(context.Background(), model)
 		require.NoError(t, err)
 
-		datastore := storage.OpenFGADatastore(ds)
+		var datastore storage.OpenFGADatastore
 		if blocking {
 			datastore = blockingReadDatastore{OpenFGADatastore: ds}
+		} else {
+			datastore = ds
 		}
 
 		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
