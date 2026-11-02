@@ -178,6 +178,8 @@ ConsumerLoop:
 					if !errors.Is(err, storage.ErrIteratorDone) {
 						lastErr = err
 					}
+					// Do not read again: a stopped iterator may keep returning its error (Dedupe reads Head, which the
+					// ordered merge caches), and a match from another iterator can still override lastErr.
 					break
 				}
 				if processUsersetMessage(t, leftSet, rightSet) {
@@ -268,7 +270,8 @@ func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterat
 		return nil, err
 	}
 	iterChan := make(chan *iterator.Msg, 1)
-	iter := storage.WrapIterator(storage.ObjectIDKind, i)
+	// The sorted merge keeps a user's and the wildcard's tuple for the same object; fastPathDifference needs unique IDs.
+	iter := iterator.Dedupe(storage.WrapIterator(storage.ObjectIDKind, i))
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
 	}
