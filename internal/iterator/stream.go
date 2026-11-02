@@ -2,6 +2,7 @@ package iterator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -28,15 +29,15 @@ func (s *Stream) Idx() int {
 	return s.idx
 }
 
-// Head returns the first item in the buffer.  If the Head is sourceIsClosed or
-// cancelled, it will stop the buffer and set the buffer to nil.
+// Head returns the first item in the buffer. If the Head is exhausted, it
+// stops the buffer and sets the buffer to nil.
 func (s *Stream) Head(ctx context.Context) (string, error) {
 	if s.buffer == nil {
 		return "", storage.ErrIteratorDone
 	}
 	t, err := s.buffer.Head(ctx)
 	if err != nil {
-		if storage.IterIsDoneOrCancelled(err) {
+		if errors.Is(err, storage.ErrIteratorDone) {
 			s.buffer.Stop()
 			s.buffer = nil
 		}
@@ -51,7 +52,7 @@ func (s *Stream) Next(ctx context.Context) (string, error) {
 	}
 	t, err := s.buffer.Next(ctx)
 	if err != nil {
-		if storage.IterIsDoneOrCancelled(err) {
+		if errors.Is(err, storage.ErrIteratorDone) {
 			s.buffer.Stop()
 			s.buffer = nil
 		}
@@ -88,7 +89,7 @@ func (s *Stream) SkipToTargetObject(ctx context.Context, target string) error {
 	for {
 		t, err := s.Head(ctx)
 		if err != nil {
-			if storage.IterIsDoneOrCancelled(err) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				return nil
 			}
 			return err
@@ -102,7 +103,7 @@ func (s *Stream) SkipToTargetObject(ctx context.Context, target string) error {
 		// Otherwise advance the iterator
 		_, err = s.Next(ctx)
 		if err != nil {
-			if storage.IterIsDoneOrCancelled(err) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				return nil
 			}
 			return err
@@ -116,7 +117,7 @@ func (s *Stream) Drain(ctx context.Context) ([]string, error) {
 	for {
 		t, err := s.Next(ctx)
 		if err != nil {
-			if storage.IterIsDoneOrCancelled(err) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 			return nil, err
@@ -127,6 +128,9 @@ func (s *Stream) Drain(ctx context.Context) ([]string, error) {
 }
 
 func (s *Stream) fetchSource(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if s.buffer != nil || s.sourceIsClosed {
 		// no need to poll further
 		return nil
@@ -137,6 +141,9 @@ func (s *Stream) fetchSource(ctx context.Context) error {
 		return ctx.Err()
 	case i, ok := <-s.source:
 		if !ok {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			s.sourceIsClosed = true
 			break
 		}
