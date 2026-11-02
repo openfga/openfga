@@ -2665,6 +2665,879 @@ tests:
               relation: viewer
             expectation:
               - user:cheetah
+  - name: exclusion_of_exclusion_under_base_wildcard_carveout
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define member: [user]
+              define viewer: (everyone but not member) but not (member but not member)
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:bob
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+  - name: base_pure_wildcard_exclusion_includes_user
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define member: [user]
+              define viewer: everyone but not (member but not member)
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+              - user:alice
+  - name: nested_exclusion_intersection_wrapped_wildcard_base
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define member: [user]
+              define viewer: ((everyone but not member) and everyone) but not (member but not member)
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:bob
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+  - name: nested_exclusion_union_wrapped_wildcard_base
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define member: [user]
+              define banned: [user]
+              define viewer: ((everyone but not member) or (everyone but not banned)) but not (member but not member)
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+          - object: document:1
+            relation: banned
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:bob
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+  - name: nested_exclusion_base_user_granted_by_other_parent
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type folder
+            relations
+              define everyone: [user:*]
+              define banned: [user]
+              define allowed: [user]
+              define viewer: (everyone but not banned) or allowed
+
+          type document
+            relations
+              define parent: [folder]
+              define member: [user]
+              define viewer: viewer from parent but not (member but not member)
+        tuples:
+          - object: folder:1
+            relation: everyone
+            user: user:*
+          - object: folder:1
+            relation: banned
+            user: user:alice
+          - object: folder:2
+            relation: allowed
+            user: user:alice
+          - object: document:1
+            relation: parent
+            user: folder:1
+          - object: document:1
+            relation: parent
+            user: folder:2
+          - object: document:1
+            relation: member
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+              - user:alice
+  - name: nested_exclusion_base_wildcard_granted_by_other_parent
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type folder
+            relations
+              define everyone: [user:*]
+              define banned: [user]
+              define viewer: everyone but not banned
+
+          type document
+            relations
+              define parent: [folder]
+              define member: [user]
+              define viewer: viewer from parent but not (member but not member)
+        tuples:
+          - object: folder:1
+            relation: everyone
+            user: user:*
+          - object: folder:1
+            relation: banned
+            user: user:alice
+          - object: folder:2
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: parent
+            user: folder:1
+          - object: document:1
+            relation: parent
+            user: folder:2
+          - object: document:1
+            relation: member
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+              - user:alice
+  - name: nested_exclusion_base_union_regrants_wildcard_user
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user, user:*]
+              define everyone2: [user:*]
+              define member: [user]
+              define viewer: ((everyone but not member) or everyone2) but not (member but not member)
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: everyone
+            user: user:bob
+          - object: document:1
+            relation: everyone2
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+              - user:alice
+              - user:bob
+  - name: exclusion_wildcard_base_minus_union_carveout
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define member: [user]
+              define banned: [user]
+              define viewer: everyone but not ((everyone but not member) or banned)
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+          - object: document:1
+            relation: member
+            user: user:bob
+          - object: document:1
+            relation: banned
+            user: user:bob
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:charlie
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:alice
+  - name: exclusion_user_base_minus_union_carveout
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define member: [user]
+              define banned: [user]
+              define viewer: [user] but not ((everyone but not member) or banned)
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+          - object: document:1
+            relation: member
+            user: user:bob
+          - object: document:1
+            relation: banned
+            user: user:bob
+          - object: document:1
+            relation: viewer
+            user: user:alice
+          - object: document:1
+            relation: viewer
+            user: user:bob
+          - object: document:1
+            relation: viewer
+            user: user:charlie
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:charlie
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:alice
+  - name: exclusion_wildcard_base_minus_union_of_carveouts
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define member: [user]
+              define banned: [user]
+              define viewer: everyone but not ((everyone but not member) or (everyone but not banned))
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: member
+            user: user:alice
+          - object: document:1
+            relation: banned
+            user: user:bob
+          - object: document:1
+            relation: member
+            user: user:carl
+          - object: document:1
+            relation: banned
+            user: user:carl
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:carl
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:carl
+  - name: exclusion_subtract_wildcard_and_userset_no_relation
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user]
+              define banned: [user]
+              define allowed: member but not banned
+
+          type document
+            relations
+              define everyone: [user:*]
+              define blocked: [user:*, group#allowed]
+              define viewer: everyone but not blocked
+        tuples:
+          - object: group:1
+            relation: member
+            user: user:alice
+          - object: group:1
+            relation: banned
+            user: user:alice
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: blocked
+            user: user:*
+          - object: document:1
+            relation: blocked
+            user: group:1#allowed
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation: []
+  - name: nested_exclusion_in_both_base_and_subtract
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define member: [user]
+              define viewer: (member but not member) but not (member but not member)
+        tuples:
+          - object: document:1
+            relation: member
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+  - name: union_wildcard_exclusion_then_intersection
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define everyone: [user:*]
+              define banned: [user]
+              define allowed: everyone but not banned
+
+          type document
+            relations
+              define everyone: [user:*]
+              define everyone2: [user:*]
+              define banned: [user]
+              define other: [user]
+              define rel2: [user]
+              define src: [user, user:*, group#allowed]
+              define base_excl: everyone but not banned
+              define viewer: (base_excl or other) and rel2
+              define viewer_wc: (base_excl or everyone2) and rel2
+              define viewer_src: (src or other) and rel2
+              define src_excl: src but not banned
+              define viewer_src_excl: (src_excl or other) and rel2
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: banned
+            user: user:bob
+          - object: document:1
+            relation: rel2
+            user: user:bob
+          - object: document:1
+            relation: rel2
+            user: user:alice
+          - object: document:2
+            relation: everyone
+            user: user:*
+          - object: document:2
+            relation: banned
+            user: user:bob
+          - object: document:2
+            relation: other
+            user: user:bob
+          - object: document:2
+            relation: rel2
+            user: user:bob
+          - object: document:3
+            relation: everyone
+            user: user:*
+          - object: document:3
+            relation: everyone2
+            user: user:*
+          - object: document:3
+            relation: banned
+            user: user:bob
+          - object: document:3
+            relation: rel2
+            user: user:bob
+          - object: document:4
+            relation: src
+            user: user:*
+          - object: document:4
+            relation: src
+            user: group:g#allowed
+          - object: group:g
+            relation: everyone
+            user: user:*
+          - object: group:g
+            relation: banned
+            user: user:bob
+          - object: document:4
+            relation: rel2
+            user: user:bob
+          - object: document:5
+            relation: src
+            user: user:bob
+          - object: document:5
+            relation: src
+            user: group:g#allowed
+          - object: document:5
+            relation: rel2
+            user: user:bob
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:alice
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer_wc
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:4
+              relation: viewer_src
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:4
+              relation: viewer_src_excl
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:5
+              relation: viewer_src_excl
+              user: user:bob
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:alice
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer_wc
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer_src
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer_src_excl
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer_src_excl
+            expectation:
+              - user:bob
+  - name: user_through_multiple_paths_with_nested_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user]
+              define everyone: [user:*]
+              define banned: [user]
+              define allowed: member but not banned
+              define allowed_wc: everyone but not banned
+
+          type document
+            relations
+              define parent: [group]
+              define editor: [user]
+              define nobody: [user]
+              define rel2: [user]
+              define direct: [user, group#allowed]
+              define ttu: allowed from parent
+              define blocked: [user, group#allowed]
+              define viewer_sub: editor but not blocked
+              define viewer_sub_ttu: editor but not ttu
+              define viewer_base: direct but not nobody
+              define src: [user:*, group#allowed_wc]
+              define src_excl: src but not nobody
+              define viewer_and: src and rel2
+              define viewer_and_excl: src_excl and rel2
+        tuples:
+          - object: document:1
+            relation: direct
+            user: user:bob
+          - object: document:1
+            relation: direct
+            user: group:g#allowed
+          - object: document:1
+            relation: editor
+            user: user:bob
+          - object: document:1
+            relation: blocked
+            user: user:bob
+          - object: document:1
+            relation: blocked
+            user: group:g#allowed
+          - object: group:g
+            relation: member
+            user: user:bob
+          - object: group:g
+            relation: banned
+            user: user:bob
+          - object: document:2
+            relation: parent
+            user: group:g1
+          - object: document:2
+            relation: parent
+            user: group:g2
+          - object: document:2
+            relation: editor
+            user: user:bob
+          - object: group:g1
+            relation: member
+            user: user:bob
+          - object: group:g2
+            relation: member
+            user: user:bob
+          - object: group:g2
+            relation: banned
+            user: user:bob
+          - object: document:3
+            relation: src
+            user: user:*
+          - object: document:3
+            relation: src
+            user: group:gw#allowed_wc
+          - object: group:gw
+            relation: everyone
+            user: user:*
+          - object: group:gw
+            relation: banned
+            user: user:bob
+          - object: document:3
+            relation: rel2
+            user: user:bob
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: direct
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer_sub
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer_base
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: ttu
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer_sub_ttu
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer_and
+              user: user:bob
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer_and_excl
+              user: user:bob
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: direct
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer_sub
+            expectation: []
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer_base
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: ttu
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer_sub_ttu
+            expectation: []
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer_and
+            expectation:
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer_and_excl
+            expectation:
+              - user:bob
   - name: exclusion_and_exclusion_in_base_with_wildcard
     stages:
       - model: |
