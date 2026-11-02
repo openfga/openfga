@@ -10706,3 +10706,55 @@ tests:
               relation: access
               object: resource:1
             expectation: false
+  - name: wildcard_and_user_same_object_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define viewer: [user, user:*]
+              define blocked: [user]
+              define allowed: viewer but not blocked
+
+          type document
+            relations
+              define access: [group#allowed]
+        tuples:
+          - user: user:u
+            relation: viewer
+            object: group:g
+          - user: user:*
+            relation: viewer
+            object: group:g
+          - user: user:u
+            relation: blocked
+            object: group:g
+          - user: group:g#allowed
+            relation: access
+            object: document:d
+        checkAssertions:
+          - tuple:
+              object: document:d
+              relation: access
+              user: user:u
+            expectation: false
+          - tuple:
+              object: document:d
+              relation: access
+              user: user:other
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:u
+              type: document
+              relation: access
+            expectation:
+          - request:
+              user: user:other
+              type: document
+              relation: access
+            expectation:
+              - document:d
