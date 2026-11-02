@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
+- Fixed in-memory datastore `ReadAuthorizationModels` pagination returning a model twice when a model is written between page reads. The continuation token is now the model id, as in the SQL datastores.
 
 ## [1.22.1] - 2026-10-27
 ### Changed
