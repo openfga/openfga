@@ -215,10 +215,12 @@ func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 }
 
 // lazyTupleReader mimics the SQL datastores: Read returns at once, and the slow query runs
-// inside Next or Head. It records how many of those calls ran at the same time.
+// inside the first Next or Head. It records how many queries ran at the same time.
+// A non-nil pool models a finite connection pool: a query holds a connection until Stop.
 type lazyTupleReader struct {
 	storage.RelationshipTupleReader
 	delay time.Duration
+	pool  chan struct{}
 
 	mu          sync.Mutex
 	inFlight    int
@@ -249,17 +251,48 @@ func (r *lazyTupleReader) query() {
 
 type lazyTupleIterator struct {
 	storage.TupleIterator
-	reader *lazyTupleReader
+	reader  *lazyTupleReader
+	queried bool
+	conn    bool
+}
+
+func (itr *lazyTupleIterator) run(ctx context.Context) error {
+	if itr.queried {
+		return nil
+	}
+	if itr.reader.pool != nil {
+		select {
+		case itr.reader.pool <- struct{}{}:
+			itr.conn = true
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	itr.queried = true
+	itr.reader.query()
+	return nil
 }
 
 func (itr *lazyTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	itr.reader.query()
+	if err := itr.run(ctx); err != nil {
+		return nil, err
+	}
 	return itr.TupleIterator.Next(ctx)
 }
 
 func (itr *lazyTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	itr.reader.query()
+	if err := itr.run(ctx); err != nil {
+		return nil, err
+	}
 	return itr.TupleIterator.Head(ctx)
+}
+
+func (itr *lazyTupleIterator) Stop() {
+	if itr.conn {
+		<-itr.reader.pool
+		itr.conn = false
+	}
+	itr.TupleIterator.Stop()
 }
 
 func TestBoundedWrapper_LazyIterator(t *testing.T) {
@@ -316,6 +349,38 @@ func TestBoundedWrapper_LazyIterator(t *testing.T) {
 
 		_, err = outer.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+
+	t.Run("open_iterator_drains_while_other_read_waits_for_pool", func(t *testing.T) {
+		backend := &lazyTupleReader{pool: make(chan struct{}, 1)}
+		dut := NewBoundedTupleReader(backend, &Operation{Method: apimethod.Check, Concurrency: 1})
+
+		// A deadlock shows up as a deadline error instead of a hung test.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		a, err := dut.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
+		require.NoError(t, err)
+		_, err = a.Next(ctx) // a now holds the only pool connection
+		require.NoError(t, err)
+
+		var wg errgroup.Group
+		wg.Go(func() error {
+			b, err := dut.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
+			if err != nil {
+				return err
+			}
+			defer b.Stop()
+			_, err = b.Next(ctx)
+			return err
+		})
+		// b holds the only slot while it waits for a's connection.
+		require.Eventually(t, func() bool { return len(dut.limiter) == 1 }, time.Second, time.Millisecond)
+
+		_, err = a.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		a.Stop()
+		require.NoError(t, wg.Wait())
 	})
 
 	t.Run("ctx_cancelled_while_waiting_for_slot", func(t *testing.T) {

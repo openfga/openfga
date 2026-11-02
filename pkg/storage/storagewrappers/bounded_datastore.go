@@ -43,28 +43,39 @@ func (itr *countingTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 	return i, nil
 }
 
-// boundedTupleIterator holds a concurrency slot only while Next or Head runs. SQL iterators
-// run their query lazily on the first Next or Head, after Read has returned and released its slot.
-// No slot is held between calls, so a consumer can issue nested reads while the iterator is open.
+// boundedTupleIterator holds a concurrency slot while its first Next or Head runs. SQL iterators
+// run their query lazily on that first call, after Read has returned and released its slot.
+// Later calls only drain rows the open query already holds a connection for, so they skip the
+// limiter: waiting there could deadlock against a reader that holds the slot while waiting for
+// a pool connection. No slot is held between calls, so a consumer can issue nested reads.
 type boundedTupleIterator struct {
 	storage.TupleIterator
-	reader *BoundedTupleReader
-	op     string
+	reader  *BoundedTupleReader
+	op      string
+	started atomic.Bool
 }
 
 func (itr *boundedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if itr.started.Load() {
+		return itr.TupleIterator.Next(ctx)
+	}
 	if err := itr.reader.acquire(ctx, itr.op); err != nil {
 		return nil, err
 	}
 	defer itr.reader.done()
+	defer itr.started.Store(true)
 	return itr.TupleIterator.Next(ctx)
 }
 
 func (itr *boundedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if itr.started.Load() {
+		return itr.TupleIterator.Head(ctx)
+	}
 	if err := itr.reader.acquire(ctx, itr.op); err != nil {
 		return nil, err
 	}
 	defer itr.reader.done()
+	defer itr.started.Store(true)
 	return itr.TupleIterator.Head(ctx)
 }
 
