@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"time"
 
@@ -63,8 +64,9 @@ func (itr *boundedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, er
 		return nil, err
 	}
 	defer itr.reader.done()
-	defer itr.started.Store(true)
-	return itr.TupleIterator.Next(ctx)
+	t, err := itr.TupleIterator.Next(ctx)
+	itr.markStarted(err)
+	return t, err
 }
 
 func (itr *boundedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -75,8 +77,17 @@ func (itr *boundedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, er
 		return nil, err
 	}
 	defer itr.reader.done()
-	defer itr.started.Store(true)
-	return itr.TupleIterator.Head(ctx)
+	t, err := itr.TupleIterator.Head(ctx)
+	itr.markStarted(err)
+	return t, err
+}
+
+// markStarted lets later calls skip the limiter only once the query has run. A failed first
+// call may not have opened rows, so its retry would query again and must stay bounded.
+func (itr *boundedTupleIterator) markStarted(err error) {
+	if err == nil || errors.Is(err, storage.ErrIteratorDone) {
+		itr.started.Store(true)
+	}
 }
 
 var (

@@ -383,6 +383,31 @@ func TestBoundedWrapper_LazyIterator(t *testing.T) {
 		require.NoError(t, wg.Wait())
 	})
 
+	t.Run("retry_after_failed_first_call_is_bounded", func(t *testing.T) {
+		backend := &lazyTupleReader{pool: make(chan struct{}, 1)}
+		dut := NewBoundedTupleReader(backend, &Operation{Method: apimethod.Check, Concurrency: 1})
+
+		itr, err := dut.Read(context.Background(), store, storage.ReadFilter{}, storage.ReadOptions{})
+		require.NoError(t, err)
+		defer itr.Stop()
+
+		backend.pool <- struct{}{} // exhaust the pool so the first call fails before opening rows
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+		_, err = itr.Next(ctx)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		<-backend.pool
+
+		require.NoError(t, dut.waitForLimiter(context.Background())) // occupy the only slot
+		defer dut.done()
+
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+		_, err = itr.Next(ctx)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 0, backend.maxInFlight)
+	})
+
 	t.Run("ctx_cancelled_while_waiting_for_slot", func(t *testing.T) {
 		backend := &lazyTupleReader{}
 		dut := NewBoundedTupleReader(backend, &Operation{Method: apimethod.Check, Concurrency: 1})
