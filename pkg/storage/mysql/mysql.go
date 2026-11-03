@@ -235,6 +235,9 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	return iter.ToArray(ctx, options.Pagination)
 }
 
+// read returns an iterator over the tuples that match filter. Without options, it reads in pages
+// ordered by the tuple primary key, so the iterator holds no connection between calls. With
+// options, it runs one query ordered by ulid, for ReadPage.
 func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions, db *sql.DB) (*sqlcommon.SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()

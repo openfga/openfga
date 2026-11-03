@@ -455,10 +455,13 @@ func NewPagedRowGetter(connector Connector, sb sq.SelectBuilder, keys ...PageKey
 	return &pagedRowGetter{connector: connector, sb: sb, keys: keys}
 }
 
+// GetRows returns the first page, of iteratorPrefetch rows.
 func (p *pagedRowGetter) GetRows(ctx context.Context) (Rows, error) {
 	return p.getPage(ctx, nil, iteratorPrefetch)
 }
 
+// getPage returns up to limit rows ordered by the page keys. If after is set, it returns only rows
+// whose keys sort after its keys.
 func (p *pagedRowGetter) getPage(ctx context.Context, after *storage.TupleRecord, limit int) (Rows, error) {
 	exprs := make([]string, len(p.keys))
 	for i, k := range p.keys {
@@ -572,6 +575,8 @@ func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandler
 	}
 }
 
+// fetchBuffer runs the query for the next page, or the whole query without a pager, and records its
+// duration. Callers must hold mu.
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
@@ -594,6 +599,7 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	return nil
 }
 
+// next returns the next record and advances past it.
 func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -606,6 +612,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	return record, nil
 }
 
+// head returns the next record without advancing past it.
 func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -667,11 +674,13 @@ func (t *SQLTupleIterator) fill() {
 	t.pageSize = min(2*t.pageSize, maxIteratorPage)
 }
 
+// closeRows closes the rows, which returns their connection to the pool. Callers must hold mu.
 func (t *SQLTupleIterator) closeRows() {
 	_ = t.rows.Close()
 	t.rows = nil
 }
 
+// scan reads the current row into a record and decodes its condition context.
 func (t *SQLTupleIterator) scan() (*storage.TupleRecord, error) {
 	var conditionName sql.NullString
 	var conditionContext []byte
