@@ -409,6 +409,11 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
+	if options == nil {
+		rg := sqlcommon.NewPagedRowGetter((*pgxPoolConnector)(db), sb, sqlcommon.TuplePrimaryKey...)
+		return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
+	}
+
 	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
@@ -767,12 +772,8 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), sb)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
+	rg := sqlcommon.NewPagedRowGetter((*pgxPoolConnector)(db), sb, sqlcommon.TuplePrimaryKey...)
+	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -808,7 +809,7 @@ func (s *Datastore) ReadStartingWithUser(
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
 			"_user":       targetUsersArg,
-		}).OrderBy("object_id collate \"C\"")
+		})
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
@@ -816,11 +817,12 @@ func (s *Datastore) ReadStartingWithUser(
 	if len(filter.Conditions) > 0 {
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), builder)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
+	// Results stay ordered by object_id (collate "C"); _user makes the page order unique.
+	rg := sqlcommon.NewPagedRowGetter((*pgxPoolConnector)(db), builder,
+		sqlcommon.PageKey{Expr: `object_id collate "C"`, Value: sqlcommon.PageKeyObjectID.Value},
+		sqlcommon.PageKeyUser,
+	)
+	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

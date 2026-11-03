@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
+- Fixed SQL datastores (Postgres, MySQL) deadlocking the connection pool when a consumer issued nested reads while a tuple iterator held its connection. `SQLTupleIterator` now reads `Read`, `ReadUsersetTuples` and `ReadStartingWithUser` results in keyset-ordered pages and closes each page's rows before the consumer sees its tuples, so no connection is held between iterator calls. [#3326](https://github.com/openfga/openfga/issues/3326)
 
 ## [1.22.1] - 2026-10-27
 ### Changed

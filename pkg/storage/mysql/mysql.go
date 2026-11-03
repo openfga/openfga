@@ -285,6 +285,11 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
+	if options == nil {
+		rg := sqlcommon.NewPagedRowGetter(sqlcommon.NewSQLConnector(db), sb, sqlcommon.TuplePrimaryKey...)
+		return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
+	}
+
 	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(db), sb)
 	if err != nil {
 		return nil, err
@@ -428,10 +433,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(db), sb)
-	if err != nil {
-		return nil, err
-	}
+	rg := sqlcommon.NewPagedRowGetter(sqlcommon.NewSQLConnector(db), sb, sqlcommon.TuplePrimaryKey...)
 	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
@@ -468,7 +470,7 @@ func (s *Datastore) ReadStartingWithUser(
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
 			"_user":       targetUsersArg,
-		}).OrderBy("object_id")
+		})
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
@@ -477,10 +479,8 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(db), builder)
-	if err != nil {
-		return nil, err
-	}
+	// Results stay ordered by object_id; _user makes the page order unique.
+	rg := sqlcommon.NewPagedRowGetter(sqlcommon.NewSQLConnector(db), builder, sqlcommon.PageKeyObjectID, sqlcommon.PageKeyUser)
 	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 

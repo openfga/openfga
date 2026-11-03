@@ -2627,3 +2627,63 @@ func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenF
 
 	wg.Wait()
 }
+
+// LargeReadsTest reads results that span several pages of the SQL iterators, which page by key
+// so they hold no connection between pages (#3326). Every tuple must come back exactly once.
+func LargeReadsTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	const n = 307 // pages of 100, 200, then a partial page.
+
+	var tks []*openfgav1.TupleKey
+	for i := 0; i < n; i++ {
+		// Mixed-case IDs, so the page order and the key comparison must agree on collation.
+		id := fmt.Sprintf("a%03d", i)
+		if i%2 == 1 {
+			id = fmt.Sprintf("B%03d", i)
+		}
+		tks = append(tks,
+			tuple.NewTupleKey("document:"+id, "viewer", "user:jon"),
+			tuple.NewTupleKey("document:big", "viewer", "user:"+id),
+			tuple.NewTupleKey("document:big", "viewer", "group:"+id+"#member"),
+		)
+	}
+	for start := 0; start < len(tks); start += datastore.MaxTuplesPerWrite() {
+		end := min(start+datastore.MaxTuplesPerWrite(), len(tks))
+		require.NoError(t, datastore.Write(ctx, storeID, nil, tks[start:end]))
+	}
+
+	drain := func(t *testing.T, iter storage.TupleIterator, err error) map[string]struct{} {
+		t.Helper()
+		require.NoError(t, err)
+		defer iter.Stop()
+		seen := map[string]struct{}{}
+		for {
+			tk, err := iter.Next(ctx)
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return seen
+			}
+			require.NoError(t, err)
+			key := tuple.TupleKeyToString(tk.GetKey())
+			require.NotContains(t, seen, key)
+			seen[key] = struct{}{}
+		}
+	}
+
+	t.Run("read", func(t *testing.T) {
+		iter, err := datastore.Read(ctx, storeID, storage.ReadFilter{Object: "document:big", Relation: "viewer"}, storage.ReadOptions{})
+		require.Len(t, drain(t, iter, err), 2*n)
+	})
+	t.Run("read_userset_tuples", func(t *testing.T) {
+		iter, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{Object: "document:big", Relation: "viewer"}, storage.ReadUsersetTuplesOptions{})
+		require.Len(t, drain(t, iter, err), n)
+	})
+	t.Run("read_starting_with_user", func(t *testing.T) {
+		iter, err := datastore.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:jon"}},
+		}, storage.ReadStartingWithUserOptions{})
+		require.Len(t, drain(t, iter, err), n)
+	})
+}
