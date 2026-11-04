@@ -514,7 +514,7 @@ func TestEvaluations(t *testing.T) {
 			StoreId: tc.storeID,
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"current_hour": 10}),
+			Context: testutils.MustNewStruct(t, map[string]any{"current_hour": 10}),
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc2"}},
@@ -530,7 +530,7 @@ func TestEvaluations(t *testing.T) {
 			StoreId: tc.storeID,
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"current_hour": 22}),
+			Context: testutils.MustNewStruct(t, map[string]any{"current_hour": 22}),
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc2"}},
@@ -568,12 +568,12 @@ func TestEvaluations(t *testing.T) {
 			StoreId: tc.storeID,
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"current_hour": 22}), // Default: outside hours
+			Context: testutils.MustNewStruct(t, map[string]any{"current_hour": 22}), // Default: outside hours
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}}, // Uses default context
 				{
 					Resource: &authzenv1.Resource{Type: "document", Id: "doc2"},
-					Context:  testutils.MustNewStruct(t, map[string]interface{}{"current_hour": 10}), // Override: within hours
+					Context:  testutils.MustNewStruct(t, map[string]any{"current_hour": 10}), // Override: within hours
 				},
 			},
 		})

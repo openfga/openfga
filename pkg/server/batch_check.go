@@ -140,8 +140,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
-		var batchValidationError *commands.BatchCheckValidationError
-		if errors.As(err, &batchValidationError) {
+		if _, ok := errors.AsType[*commands.BatchCheckValidationError](err); ok {
 			return nil, serverErrors.ValidationError(err)
 		}
 

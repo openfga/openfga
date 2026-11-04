@@ -42,7 +42,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the next benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
-				for j := 0; j < 1000; j++ {
+				for range 1000 {
 					user := "user:" + ulid.Make().String()
 					// one document accessible by many users
 					tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
@@ -73,7 +73,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the previous benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
-				for j := 0; j < 1000; j++ {
+				for range 1000 {
 					user := "user:" + ulid.Make().String()
 					folder := "folder:" + ulid.Make().String()
 					// one document accessible by many users, but this benchmark will incur more reads, so it should take longer and result in less iterations
@@ -110,7 +110,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				}`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				var tuples []*openfgav1.TupleKey
-				for j := 0; j < 1000; j++ {
+				for range 1000 {
 					// one document accessible by many users
 					user := "user:" + ulid.Make().String()
 					tuples = append(tuples, tuple.NewTupleKeyWithCondition("document:1", "viewer", user, "condTrue", nil))
@@ -121,7 +121,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				Object:      &openfgav1.Object{Type: "document", Id: "1"},
 				Relation:    "can_view_conditional",
 				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-				Context:     testutils.MustNewStruct(b, map[string]interface{}{"param": true}),
+				Context:     testutils.MustNewStruct(b, map[string]any{"param": true}),
 			},
 			inputConfigMaxResults: 0, // infinite
 			expectedResults:       1000,

@@ -60,7 +60,7 @@ func TestSubjectSearch(t *testing.T) {
 
 		// Create 10 users with reader access
 		tuples := make([]*openfgav1.TupleKey, 10)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			tuples[i] = &openfgav1.TupleKey{
 				User:     fmt.Sprintf("user:user%02d", i),
 				Relation: "reader",
@@ -89,7 +89,7 @@ func TestSubjectSearch(t *testing.T) {
 		for _, s := range resp.GetResults() {
 			subjectIDs[s.GetId()] = true
 		}
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			require.True(t, subjectIDs[fmt.Sprintf("user%02d", i)])
 		}
 	})
@@ -251,7 +251,7 @@ func TestResourceSearch(t *testing.T) {
 
 		// Create 10 documents with alice as reader
 		tuples := make([]*openfgav1.TupleKey, 10)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			tuples[i] = &openfgav1.TupleKey{
 				User:     "user:alice",
 				Relation: "reader",
@@ -280,7 +280,7 @@ func TestResourceSearch(t *testing.T) {
 		for _, r := range resp.GetResults() {
 			resourceIDs[r.GetId()] = true
 		}
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			require.True(t, resourceIDs[fmt.Sprintf("doc%02d", i)])
 		}
 	})

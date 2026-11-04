@@ -409,7 +409,7 @@ func TestIteratorStreams(t *testing.T) {
 			ctx := context.Background()
 			streams := make([]*Stream, 0)
 			expectedLen := 0
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				c := make(chan *Msg, 1)
 				producer := NewStream(0, c)
 				if i%2 == 0 {
@@ -429,7 +429,7 @@ func TestIteratorStreams(t *testing.T) {
 		t.Run("should_return_empty_when_fully_drained", func(t *testing.T) {
 			ctx := context.Background()
 			streams := make([]*Stream, 0)
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				producer := &Stream{buffer: nil, sourceIsClosed: true}
 				streams = append(streams, producer)
 			}
@@ -441,7 +441,7 @@ func TestIteratorStreams(t *testing.T) {
 	})
 	t.Run("Stop", func(t *testing.T) {
 		streams := make([]*Stream, 3)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			buf := storage.NewStaticIterator[string]([]string{"obj:0", "obj:1", "obj:3"})
 			c := make(chan *Msg, 1)
 			close(c)

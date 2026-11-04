@@ -88,7 +88,7 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 			Relation: "viewer",
 			User:     "user:jon",
 		},
-		Context: testutils.MustNewStruct(t, map[string]interface{}{
+		Context: testutils.MustNewStruct(t, map[string]any{
 			"s": testutils.CreateRandomString(config.DefaultMaxRPCMessageSizeInBytes + 1),
 		}),
 	})
@@ -516,7 +516,7 @@ func GRPCWriteTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 
 func writeTuples(client openfgav1.OpenFGAServiceClient, storeID string, modelID string, count int, user string) (*openfgav1.WriteResponse, error) {
 	tupleKeys := make([]*openfgav1.TupleKey, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		tupleKeys[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", user)
 	}
 	return client.Write(context.Background(), &openfgav1.WriteRequest{
@@ -1364,7 +1364,7 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 
 func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	_101tuples := make([]*openfgav1.TupleKey, 101)
-	for i := 0; i < 101; i++ {
+	for i := range 101 {
 		_101tuples[i] = tuple.NewTupleKey(
 			fmt.Sprintf("document:%d", i), "user", fmt.Sprintf("user:%d", i),
 		)

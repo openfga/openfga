@@ -773,7 +773,7 @@ func TestValidateConditionFacetMismatch(t *testing.T) {
 	// isOk is bound to different facets depending on the model. A conditioned tuple must
 	// only be accepted when the matching restriction's facet (concrete / typed-wildcard /
 	// userset) also matches the tuple's user shape.
-	condCtx, err := structpb.NewStruct(map[string]interface{}{"ok": true})
+	condCtx, err := structpb.NewStruct(map[string]any{"ok": true})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -1386,7 +1386,7 @@ func BenchmarkValidateTupleForWrite(b *testing.B) {
 func TestValidateStruct(t *testing.T) {
 	tests := []struct {
 		name    string
-		context map[string]interface{}
+		context map[string]any
 		wantErr bool
 	}{
 		{
@@ -1396,43 +1396,43 @@ func TestValidateStruct(t *testing.T) {
 		},
 		{
 			name:    "clean_context",
-			context: map[string]interface{}{"key": "value"},
+			context: map[string]any{"key": "value"},
 			wantErr: false,
 		},
 		{
 			name:    "control_char_in_key",
-			context: map[string]interface{}{"key\x00bad": "value"},
+			context: map[string]any{"key\x00bad": "value"},
 			wantErr: true,
 		},
 		{
 			name:    "control_char_in_string_value",
-			context: map[string]interface{}{"key": "value\x01bad"},
+			context: map[string]any{"key": "value\x01bad"},
 			wantErr: true,
 		},
 		{
 			name: "control_char_in_nested_struct_key",
-			context: map[string]interface{}{
-				"nested": map[string]interface{}{"inner\x02key": "value"},
+			context: map[string]any{
+				"nested": map[string]any{"inner\x02key": "value"},
 			},
 			wantErr: true,
 		},
 		{
 			name: "control_char_in_list_value",
-			context: map[string]interface{}{
-				"items": []interface{}{"good", "bad\x03item"},
+			context: map[string]any{
+				"items": []any{"good", "bad\x03item"},
 			},
 			wantErr: true,
 		},
 		{
 			name: "clean_nested_struct",
-			context: map[string]interface{}{
-				"nested": map[string]interface{}{"innerKey": "innerValue"},
+			context: map[string]any{
+				"nested": map[string]any{"innerKey": "innerValue"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "number_and_bool_values_pass",
-			context: map[string]interface{}{
+			context: map[string]any{
 				"count":  42.0,
 				"active": true,
 			},
@@ -1517,7 +1517,7 @@ type document
 	ts, err := typesystem.NewAndValidate(t.Context(), parser.MustTransformDSLToProto(model))
 	require.NoError(t, err)
 
-	makeCtx := func(ctx map[string]interface{}) *structpb.Struct {
+	makeCtx := func(ctx map[string]any) *structpb.Struct {
 		s, e := structpb.NewStruct(ctx)
 		require.NoError(t, e)
 		return s
@@ -1532,9 +1532,9 @@ type document
 			name: "valid_with_declared_param",
 			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				"$expression",
-				makeCtx(map[string]interface{}{
+				makeCtx(map[string]any{
 					"expression": "channel_id == 'X123456'",
-					"parameters": map[string]interface{}{"channel_id": "string"},
+					"parameters": map[string]any{"channel_id": "string"},
 				}),
 			),
 		},
@@ -1542,7 +1542,7 @@ type document
 			name: "valid_with_inferred_string_param",
 			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				"$expression",
-				makeCtx(map[string]interface{}{
+				makeCtx(map[string]any{
 					"expression": "channel_id == 'X123456'",
 				}),
 			),
@@ -1551,7 +1551,7 @@ type document
 			name: "missing_expression_field",
 			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				"$expression",
-				makeCtx(map[string]interface{}{}),
+				makeCtx(map[string]any{}),
 			),
 			expectedErr: "Invalid tuple",
 		},
@@ -1559,7 +1559,7 @@ type document
 			name: "invalid_cel_syntax",
 			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				"$expression",
-				makeCtx(map[string]interface{}{
+				makeCtx(map[string]any{
 					"expression": "channel_id ==",
 				}),
 			),
@@ -1569,9 +1569,9 @@ type document
 			name: "unknown_parameter_type",
 			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				"$expression",
-				makeCtx(map[string]interface{}{
+				makeCtx(map[string]any{
 					"expression": "x == 1",
-					"parameters": map[string]interface{}{"x": "bigdecimal"},
+					"parameters": map[string]any{"x": "bigdecimal"},
 				}),
 			),
 			expectedErr: "Invalid tuple",
@@ -1581,7 +1581,7 @@ type document
 			// viewer does not have $expression in its type restrictions
 			tuple: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice",
 				"$expression",
-				makeCtx(map[string]interface{}{
+				makeCtx(map[string]any{
 					"expression": "x == 'y'",
 				}),
 			),

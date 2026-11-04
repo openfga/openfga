@@ -35,8 +35,7 @@ func NewEvaluationError(condition string, cause error) error {
 }
 
 func (e *EvaluationError) Error() string {
-	var pTypeErr *ParameterTypeError
-	if errors.As(e.Cause, &pTypeErr) {
+	if _, ok := errors.AsType[*ParameterTypeError](e.Cause); ok {
 		return e.Unwrap().Error()
 	}
 

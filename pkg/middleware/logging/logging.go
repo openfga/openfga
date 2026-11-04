@@ -69,8 +69,7 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 	r.fields = append(r.fields, zap.Int32(grpcCodeKey, code))
 
 	if err != nil {
-		var internalError serverErrors.InternalError
-		if errors.As(err, &internalError) {
+		if internalError, ok := errors.AsType[serverErrors.InternalError](err); ok {
 			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Unwrap().Error()))
 			r.logger.Error(err.Error(), r.fields...)
 		} else {
@@ -90,7 +89,7 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 
 // PostMsgSend is invoked once after a unary response or multiple times in
 // streaming requests after each message has been sent.
-func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
+func (r *reporter) PostMsgSend(msg any, err error, _ time.Duration) {
 	if err != nil {
 		// This is the actual error that customers see.
 		intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
@@ -110,7 +109,7 @@ func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 }
 
 // PostMsgReceive is invoked after receiving a message in streaming requests.
-func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
+func (r *reporter) PostMsgReceive(msg any, _ error, _ time.Duration) {
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if req, err := r.protomarshaler.Marshal(protomsg); err == nil {

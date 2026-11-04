@@ -138,7 +138,7 @@ func TestStaticTupleIterator(t *testing.T) {
 	})
 	t.Run("next_and_head_are_thread_safe", func(t *testing.T) {
 		tks := make([]*openfgav1.Tuple, 100)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			tks[i] = &openfgav1.Tuple{
 				Key:       tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "bill"),
 				Timestamp: timestamppb.New(time.Now()),
@@ -148,7 +148,7 @@ func TestStaticTupleIterator(t *testing.T) {
 		defer iter.Stop()
 
 		var wg errgroup.Group
-		for i := 0; i < 101; i++ {
+		for range 101 {
 			wg.Go(func() error {
 				_, err := iter.Head(context.Background())
 				return err
@@ -158,7 +158,7 @@ func TestStaticTupleIterator(t *testing.T) {
 		err := wg.Wait()
 		require.NoError(t, err)
 
-		for i := 0; i < 101; i++ {
+		for range 101 {
 			wg.Go(func() error {
 				_, err := iter.Next(context.Background())
 				return err
@@ -262,7 +262,7 @@ func TestCombinedIterator(t *testing.T) {
 		iter := NewCombinedIterator(iter1, iter2)
 		defer iter.Stop()
 
-		for i := 0; i < len(expected); i++ {
+		for i := range expected {
 			tk, err := iter.Head(context.Background())
 			require.NoError(t, err)
 			require.Equal(t, expected[i], tk)
@@ -682,7 +682,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
 			t.Cleanup(iter.Stop)
 
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				got, err := iter.Head(context.Background())
 				require.NoError(t, err)
 
@@ -989,7 +989,7 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 
 	t.Run("next_and_head_are_thread_safe", func(t *testing.T) {
 		tuples := make([]*openfgav1.TupleKey, 100)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			tuples[i] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:jon")
 		}
 		iter := NewFilteredTupleKeyIterator(
@@ -1001,7 +1001,7 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 		defer iter.Stop()
 
 		var wg errgroup.Group
-		for i := 0; i < 101; i++ {
+		for range 101 {
 			wg.Go(func() error {
 				_, err := iter.Head(context.Background())
 				return err
@@ -1011,7 +1011,7 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 		err := wg.Wait()
 		require.NoError(t, err)
 
-		for i := 0; i < 101; i++ {
+		for range 101 {
 			wg.Go(func() error {
 				_, err := iter.Next(context.Background())
 				return err

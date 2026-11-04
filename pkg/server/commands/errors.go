@@ -87,24 +87,20 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
-	var invalidRelation *InvalidRelationError
-	if errors.As(err, &invalidRelation) {
+	if _, ok := errors.AsType[*InvalidRelationError](err); ok {
 		return serverErrors.ValidationError(err)
 	}
 
-	var invalidContext *InvalidContextError
-	if errors.As(err, &invalidContext) {
+	if _, ok := errors.AsType[*InvalidContextError](err); ok {
 		return serverErrors.ValidationError(err)
 	}
 
-	var invalidTupleDeprecate *InvalidTupleError
-	if errors.As(err, &invalidTupleDeprecate) {
+	if _, ok := errors.AsType[*InvalidTupleError](err); ok {
 		tupleError := tuple.InvalidTupleError{Cause: err}
 		return serverErrors.HandleTupleValidateError(&tupleError)
 	}
 
-	var errInvalidTuple *tuple.InvalidTupleError
-	if errors.As(err, &errInvalidTuple) {
+	if errInvalidTuple, ok := errors.AsType[*tuple.InvalidTupleError](err); ok {
 		return serverErrors.HandleTupleValidateError(errInvalidTuple)
 	}
 
@@ -116,8 +112,7 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
-	var throttled *ThrottledError
-	if errors.As(err, &throttled) {
+	if _, ok := errors.AsType[*ThrottledError](err); ok {
 		return serverErrors.ErrThrottledTimeout
 	}
 

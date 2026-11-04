@@ -857,7 +857,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param": true}),
 			},
 			model: model,
 			tuples: []*openfgav1.TupleKey{
@@ -877,7 +877,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": false}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param": false}),
 			},
 			model: model,
 			tuples: []*openfgav1.TupleKey{
@@ -898,7 +898,7 @@ func TestListUsersConditions(t *testing.T) {
 						Relation: "member",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param": true}),
 			},
 			model: `
 				model
@@ -936,7 +936,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param": true}),
 			},
 			model: `
 				model
@@ -974,7 +974,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param": true}),
 			},
 			model: `
 				model
@@ -1011,7 +1011,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{}),
+				Context: testutils.MustNewStruct(t, map[string]any{}),
 			},
 			model: `
 				model
@@ -1046,7 +1046,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param1": 5}),
 			},
 			model: `
 				model
@@ -1080,7 +1080,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5, "param2": 10}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param1": 5, "param2": 10}),
 			},
 			model: `
 				model
@@ -1114,7 +1114,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
+				Context: testutils.MustNewStruct(t, map[string]any{"x": "1.79769313486231570814527423731704356798070e+309"}),
 			},
 			model: `
 				model
@@ -1143,7 +1143,7 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
+				Context: testutils.MustNewStruct(t, map[string]any{"x": "1.79769313486231570814527423731704356798070e+309"}),
 			},
 			model: `
 				model

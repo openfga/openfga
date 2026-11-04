@@ -73,7 +73,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	const numOfWrites = 300
 	modelsWritten := make([]*openfgav1.AuthorizationModel, numOfWrites)
-	for i := 0; i < numOfWrites; i++ {
+	for i := range numOfWrites {
 		model := parser.MustTransformDSLToProto(`
 			model
 				schema 1.1

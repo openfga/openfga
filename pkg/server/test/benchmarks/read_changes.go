@@ -34,9 +34,9 @@ func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
 	require.NoError(b, err)
 
 	const numTupleSet = 500
-	for i := 0; i < numTupleSet; i++ {
+	for i := range numTupleSet {
 		tuples := make([]*openfgav1.TupleKey, 40)
-		for j := 0; j < len(tuples); j++ {
+		for j := range tuples {
 			tuples[j] = tuple.NewTupleKey("doc:"+strconv.Itoa(i)+"_"+strconv.Itoa(j), "viewer", "user:maria")
 		}
 		err := ds.Write(ctx, storeID, nil, tuples)

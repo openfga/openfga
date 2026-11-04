@@ -32,7 +32,7 @@ func TestValidationResult(t *testing.T) {
 
 			// write a bunch of stores (to trigger pagination)
 			var storeID string
-			for i := 0; i < totalStores; i++ {
+			for i := range totalStores {
 				storeID = ulid.Make().String()
 				_, err := ds.CreateStore(ctx, &openfgav1.Store{
 					Id:   storeID,
@@ -43,7 +43,7 @@ func TestValidationResult(t *testing.T) {
 			}
 
 			// for the last store, write a bunch of models (to trigger pagination)
-			for j := 0; j < totalModelsForOneStore; j++ {
+			for range totalModelsForOneStore {
 				modelID := ulid.Make().String()
 				err := ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
 					Id:            modelID,

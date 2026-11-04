@@ -20,7 +20,7 @@ func TestEvaluateTupleCondition(t *testing.T) {
 		name         string
 		tupleKey     *openfgav1.TupleKey
 		model        *openfgav1.AuthorizationModel
-		context      map[string]interface{}
+		context      map[string]any
 		conditionMet bool
 		expectedErr  string
 	}{
@@ -40,7 +40,7 @@ func TestEvaluateTupleCondition(t *testing.T) {
 				condition correct_ip(ip: string) {
 					ip == "192.168.0.1"
 				}`),
-			context:      map[string]interface{}{"ip": "192.168.0.1"},
+			context:      map[string]any{"ip": "192.168.0.1"},
 			conditionMet: false,
 			expectedErr:  "'unknown' - condition was not found",
 		},
@@ -60,7 +60,7 @@ func TestEvaluateTupleCondition(t *testing.T) {
 				condition correct_ip(ip: string) {
 					ip == "192.168.0.1"
 				}`),
-			context:      map[string]interface{}{"ip": "not_met"},
+			context:      map[string]any{"ip": "not_met"},
 			conditionMet: false,
 			expectedErr:  "",
 		},
@@ -80,7 +80,7 @@ func TestEvaluateTupleCondition(t *testing.T) {
 				condition correct_ip(ip: string) {
 					ip == "192.168.0.1"
 				}`),
-			context:      map[string]interface{}{"ip": "192.168.0.1"},
+			context:      map[string]any{"ip": "192.168.0.1"},
 			conditionMet: true,
 			expectedErr:  "",
 		},

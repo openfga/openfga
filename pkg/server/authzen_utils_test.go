@@ -95,7 +95,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("merges_subject_properties_with_prefix", func(t *testing.T) {
-		subjectProps, err := structpb.NewStruct(map[string]interface{}{
+		subjectProps, err := structpb.NewStruct(map[string]any{
 			"department": "engineering",
 			"level":      "senior",
 		})
@@ -117,7 +117,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("merges_resource_properties_with_prefix", func(t *testing.T) {
-		resourceProps, err := structpb.NewStruct(map[string]interface{}{
+		resourceProps, err := structpb.NewStruct(map[string]any{
 			"classification": "confidential",
 			"owner":          "bob",
 		})
@@ -139,7 +139,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("merges_action_properties_with_prefix", func(t *testing.T) {
-		actionProps, err := structpb.NewStruct(map[string]interface{}{
+		actionProps, err := structpb.NewStruct(map[string]any{
 			"requires_approval": true,
 			"max_size":          float64(1000),
 		})
@@ -160,7 +160,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("request_context_takes_precedence", func(t *testing.T) {
-		subjectProps, err := structpb.NewStruct(map[string]interface{}{
+		subjectProps, err := structpb.NewStruct(map[string]any{
 			"department": "engineering",
 		})
 		require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 			Properties: subjectProps,
 		}
 
-		requestContext, err := structpb.NewStruct(map[string]interface{}{
+		requestContext, err := structpb.NewStruct(map[string]any{
 			"subject_department": "overridden_value",
 			"custom_field":       "custom_value",
 		})
@@ -187,10 +187,10 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("merges_all_sources_with_correct_precedence", func(t *testing.T) {
-		subjectProps, _ := structpb.NewStruct(map[string]interface{}{"role": "admin"})
-		resourceProps, _ := structpb.NewStruct(map[string]interface{}{"type": "secret"})
-		actionProps, _ := structpb.NewStruct(map[string]interface{}{"audit": true})
-		requestContext, _ := structpb.NewStruct(map[string]interface{}{"ip_address": "192.168.1.1"})
+		subjectProps, _ := structpb.NewStruct(map[string]any{"role": "admin"})
+		resourceProps, _ := structpb.NewStruct(map[string]any{"type": "secret"})
+		actionProps, _ := structpb.NewStruct(map[string]any{"audit": true})
+		requestContext, _ := structpb.NewStruct(map[string]any{"ip_address": "192.168.1.1"})
 
 		subject := &authzenv1.Subject{Type: "user", Id: "alice", Properties: subjectProps}
 		resource := &authzenv1.Resource{Type: "document", Id: "doc1", Properties: resourceProps}
@@ -208,7 +208,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("handles_request_context_only", func(t *testing.T) {
-		requestContext, _ := structpb.NewStruct(map[string]interface{}{"timestamp": "2024-01-01T00:00:00Z"})
+		requestContext, _ := structpb.NewStruct(map[string]any{"timestamp": "2024-01-01T00:00:00Z"})
 
 		result, err := mergePropertiesToContext(requestContext, nil, nil, nil)
 		require.NoError(t, err)
@@ -217,15 +217,15 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("handles_complex_nested_types", func(t *testing.T) {
-		subjectProps, _ := structpb.NewStruct(map[string]interface{}{
-			"tags": []interface{}{"vip", "verified"},
-			"profile": map[string]interface{}{
+		subjectProps, _ := structpb.NewStruct(map[string]any{
+			"tags": []any{"vip", "verified"},
+			"profile": map[string]any{
 				"display_name": "Alice Smith",
 			},
 		})
-		resourceProps, _ := structpb.NewStruct(map[string]interface{}{
-			"acl": []interface{}{
-				map[string]interface{}{"principal": "user:alice", "permission": "owner"},
+		resourceProps, _ := structpb.NewStruct(map[string]any{
+			"acl": []any{
+				map[string]any{"principal": "user:alice", "permission": "owner"},
 			},
 		})
 
@@ -237,25 +237,25 @@ func TestMergePropertiesToContext(t *testing.T) {
 		require.NotNil(t, result)
 
 		resultMap := result.AsMap()
-		tags, ok := resultMap["subject_tags"].([]interface{})
+		tags, ok := resultMap["subject_tags"].([]any)
 		require.True(t, ok)
-		require.Equal(t, []interface{}{"vip", "verified"}, tags)
+		require.Equal(t, []any{"vip", "verified"}, tags)
 
-		profile, ok := resultMap["subject_profile"].(map[string]interface{})
+		profile, ok := resultMap["subject_profile"].(map[string]any)
 		require.True(t, ok)
 		require.Equal(t, "Alice Smith", profile["display_name"])
 
-		acl, ok := resultMap["resource_acl"].([]interface{})
+		acl, ok := resultMap["resource_acl"].([]any)
 		require.True(t, ok)
 		require.Len(t, acl, 1)
 	})
 
 	t.Run("handles_null_and_empty_values", func(t *testing.T) {
-		subjectProps, _ := structpb.NewStruct(map[string]interface{}{
+		subjectProps, _ := structpb.NewStruct(map[string]any{
 			"department": "engineering",
 			"manager":    nil,
-			"roles":      []interface{}{},
-			"metadata":   map[string]interface{}{},
+			"roles":      []any{},
+			"metadata":   map[string]any{},
 		})
 
 		subject := &authzenv1.Subject{Type: "user", Id: "alice", Properties: subjectProps}
@@ -267,10 +267,10 @@ func TestMergePropertiesToContext(t *testing.T) {
 		resultMap := result.AsMap()
 		require.Equal(t, "engineering", resultMap["subject_department"])
 		require.Nil(t, resultMap["subject_manager"])
-		roles, ok := resultMap["subject_roles"].([]interface{})
+		roles, ok := resultMap["subject_roles"].([]any)
 		require.True(t, ok)
 		require.Empty(t, roles)
-		metadata, ok := resultMap["subject_metadata"].(map[string]interface{})
+		metadata, ok := resultMap["subject_metadata"].(map[string]any)
 		require.True(t, ok)
 		require.Empty(t, metadata)
 	})

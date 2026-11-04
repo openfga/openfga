@@ -795,10 +795,10 @@ func TestBottomUpResolveUnion(t *testing.T) {
 
 		const numItems = 2000
 
-		for i := 0; i < numStream; i++ {
+		for range numStream {
 			producer := make(chan *iterator.Msg, 1)
 			var keys []string
-			for j := 0; j < numItems; j++ {
+			for j := range numItems {
 				keys = append(keys, "obj:"+strconv.Itoa(j))
 			}
 			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
@@ -828,7 +828,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		err := pool.Wait()
 		require.NoError(t, err)
 		var expectedObjects []string
-		for j := 0; j < numItems; j++ {
+		for j := range numItems {
 			expectedObjects = append(expectedObjects, "obj:"+strconv.Itoa(j))
 		}
 		require.Equal(t, expectedObjects, ids)
@@ -1120,10 +1120,10 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 
 		const numItems = 2000
 
-		for i := 0; i < numStream; i++ {
+		for range numStream {
 			producer := make(chan *iterator.Msg, 1)
 			var keys []string
-			for j := 0; j < numItems; j++ {
+			for j := range numItems {
 				keys = append(keys, "obj:"+strconv.Itoa(j))
 			}
 			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
@@ -1153,7 +1153,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		err := pool.Wait()
 		require.NoError(t, err)
 		var expectedObjects []string
-		for j := 0; j < numItems; j++ {
+		for j := range numItems {
 			expectedObjects = append(expectedObjects, "obj:"+strconv.Itoa(j))
 		}
 		require.Equal(t, expectedObjects, ids)
@@ -1556,7 +1556,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 
 		numItems := 2002
 		var object1 []string
-		for i := 0; i < numItems; i++ {
+		for i := range numItems {
 			object1 = append(object1, "obj:"+strconv.Itoa(i))
 		}
 		object2 := []string{"obj:0"}

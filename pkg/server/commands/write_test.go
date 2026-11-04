@@ -27,7 +27,7 @@ type writeOptionsMatcher struct {
 	expectedOnMissingDelete   storage.OnMissingDelete
 }
 
-func (w *writeOptionsMatcher) Matches(x interface{}) bool {
+func (w *writeOptionsMatcher) Matches(x any) bool {
 	opts, ok := x.([]storage.TupleWriteOption)
 	if !ok || len(opts) != 2 {
 		return false
@@ -52,7 +52,7 @@ func TestWriteCommand(t *testing.T) {
 	)
 
 	items := make([]*openfgav1.TupleKeyWithoutCondition, maxTuplesInWriteOperation+1)
-	for i := 0; i < maxTuplesInWriteOperation+1; i++ {
+	for i := range maxTuplesInWriteOperation + 1 {
 		items[i] = &openfgav1.TupleKeyWithoutCondition{
 			Object:   fmt.Sprintf("document:%d", i),
 			Relation: "viewer",
@@ -87,8 +87,8 @@ func TestWriteCommand(t *testing.T) {
 		param1 == 'ok'
 	}`)
 
-	contextStructGood := testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"})
-	contextStructBad := testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok", "param2": 1})
+	contextStructGood := testutils.MustNewStruct(t, map[string]any{"param1": "ok"})
+	contextStructBad := testutils.MustNewStruct(t, map[string]any{"param1": "ok", "param2": 1})
 	contextStructExceedsLimit := testutils.MustNewStruct(t, map[string]any{
 		"param1": testutils.CreateRandomString(config.DefaultWriteContextByteLimit + 1),
 	})

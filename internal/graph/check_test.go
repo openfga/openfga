@@ -350,12 +350,10 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
@@ -370,12 +368,10 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
@@ -398,12 +394,10 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 			}, nil
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		resp, err := exclusion(ctx, concurrencyLimit, slowTrueHandler, trueHandler)
 		require.NoError(t, err)
@@ -418,12 +412,10 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
@@ -470,12 +462,10 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
@@ -762,12 +752,10 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
@@ -807,12 +795,10 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
@@ -961,7 +947,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			// subtract branch resolves to {allowed: true} even though the base branch
 			// results in an error. Outcome should be falsey, not an error.
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
@@ -1007,7 +993,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			// base should resolve to {allowed: false} even though the subtract branch
 			// results in an error. Outcome should be falsey, not an error.
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
@@ -1079,7 +1065,7 @@ func TestCheckConditions(t *testing.T) {
 
 	storeID := ulid.Make().String()
 
-	tkConditionContext, err := structpb.NewStruct(map[string]interface{}{
+	tkConditionContext, err := structpb.NewStruct(map[string]any{
 		"param1": "ok",
 	})
 	require.NoError(t, err)
@@ -1132,7 +1118,7 @@ func TestCheckConditions(t *testing.T) {
 
 	ctx := setRequestContext(context.Background(), typesys, ds, nil)
 
-	conditionContext, err := structpb.NewStruct(map[string]interface{}{
+	conditionContext, err := structpb.NewStruct(map[string]any{
 		"param1": "notok",
 	})
 	require.NoError(t, err)
@@ -1219,7 +1205,7 @@ func TestCheckTTUWithCondition(t *testing.T) {
 			ds := memory.New()
 			storeID := ulid.Make().String()
 
-			tkConditionContext, err := structpb.NewStruct(map[string]interface{}{
+			tkConditionContext, err := structpb.NewStruct(map[string]any{
 				"expiry": "2099-01-01T00:00:00Z",
 			})
 			require.NoError(t, err)
@@ -1237,7 +1223,7 @@ func TestCheckTTUWithCondition(t *testing.T) {
 
 			ctx := setRequestContext(context.Background(), typesys, ds, nil)
 
-			requestContext, err := structpb.NewStruct(map[string]interface{}{
+			requestContext, err := structpb.NewStruct(map[string]any{
 				"current_time": tc.currentTime,
 			})
 			require.NoError(t, err)
@@ -1720,12 +1706,10 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
@@ -1747,12 +1731,10 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
-		}()
+		})
 
 		resp, err := union(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
@@ -2042,7 +2024,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 		readUserTuple      *openfgav1.Tuple
 		readUserTupleError error
 		reqTupleKey        *openfgav1.TupleKey
-		context            map[string]interface{}
+		context            map[string]any
 		expected           *ResolveCheckResponse
 		expectedError      error
 	}{
@@ -2054,7 +2036,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			},
 			readUserTupleError: nil,
 			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
-			context:            map[string]interface{}{"x": "2"},
+			context:            map[string]any{"x": "2"},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 			},
@@ -2068,7 +2050,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			},
 			readUserTupleError: nil,
 			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
-			context:            map[string]interface{}{"x": "200"},
+			context:            map[string]any{"x": "200"},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 			},
@@ -2082,7 +2064,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			},
 			readUserTupleError: nil,
 			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
-			context:            map[string]interface{}{},
+			context:            map[string]any{},
 			expected:           nil,
 			expectedError: condition.NewEvaluationError(
 				"condX",
@@ -2095,7 +2077,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			readUserTuple:      nil,
 			readUserTupleError: storage.ErrNotFound,
 			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
-			context:            map[string]interface{}{"x": "200"},
+			context:            map[string]any{"x": "200"},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 			},
@@ -2107,7 +2089,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			readUserTuple:      nil,
 			readUserTupleError: fmt.Errorf("mock_erorr"),
 			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
-			context:            map[string]interface{}{"x": "200"},
+			context:            map[string]any{"x": "200"},
 			expected:           nil,
 			expectedError:      fmt.Errorf("mock_erorr"),
 		},
@@ -2413,7 +2395,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 		name                   string
 		readUsersetTuples      []*openfgav1.Tuple
 		readUsersetTuplesError error
-		context                map[string]interface{}
+		context                map[string]any
 		model                  *openfgav1.AuthorizationModel
 		expected               *ResolveCheckResponse
 		expectedError          error
@@ -2426,7 +2408,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 				},
 			},
 			readUsersetTuplesError: nil,
-			context:                map[string]interface{}{},
+			context:                map[string]any{},
 			model:                  modelWithNoCond,
 			expected: &ResolveCheckResponse{
 				Allowed: true,
@@ -2439,7 +2421,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 				{},
 			},
 			readUsersetTuplesError: nil,
-			context:                map[string]interface{}{},
+			context:                map[string]any{},
 			model:                  modelWithNoCond,
 			expected: &ResolveCheckResponse{
 				Allowed: false,
@@ -2452,7 +2434,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 				{},
 			},
 			readUsersetTuplesError: fmt.Errorf("mock_error"),
-			context:                map[string]interface{}{},
+			context:                map[string]any{},
 			model:                  modelWithNoCond,
 			expected:               nil,
 			expectedError:          fmt.Errorf("mock_error"),
@@ -2465,7 +2447,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 				},
 			},
 			readUsersetTuplesError: nil,
-			context:                map[string]interface{}{"x": "5"},
+			context:                map[string]any{"x": "5"},
 			model:                  modelWithCond,
 			expected: &ResolveCheckResponse{
 				Allowed: true,
@@ -2480,7 +2462,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 				},
 			},
 			readUsersetTuplesError: nil,
-			context:                map[string]interface{}{"x": "200"},
+			context:                map[string]any{"x": "200"},
 			model:                  modelWithCond,
 			expected: &ResolveCheckResponse{
 				Allowed: false,
