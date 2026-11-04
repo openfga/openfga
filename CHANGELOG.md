@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed `--max-concurrent-reads-for-check`, `--max-concurrent-reads-for-list-objects` and `--max-concurrent-reads-for-list-users` not limiting reads on the SQL datastores. SQL iterators run their query on the first `Next`/`Head`, after `BoundedTupleReader` had released its slot; the returned iterators now hold a slot during each `Next` and `Head` call. [#3326](https://github.com/openfga/openfga/issues/3326)
+- Improved error handling in graph evaluation and iterator processing.
 
 ## [1.22.1] - 2026-10-27
 ### Changed
