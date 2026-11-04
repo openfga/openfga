@@ -97,14 +97,14 @@ func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 		encodedError := serverErrors.NewEncodedError(intCode, err.Error())
 		protomsg := encodedError.ActualError
 		if resp, err := json.Marshal(protomsg); err == nil {
-			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(resp)))
+			r.fields = append(r.fields, zap.Reflect(rawResponseKey, json.RawMessage(resp)))
 		}
 		return
 	}
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if resp, err := r.protomarshaler.Marshal(protomsg); err == nil {
-			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(resp)))
+			r.fields = append(r.fields, zap.Reflect(rawResponseKey, json.RawMessage(resp)))
 		}
 	}
 }
@@ -114,7 +114,7 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if req, err := r.protomarshaler.Marshal(protomsg); err == nil {
-			r.fields = append(r.fields, zap.Any(rawRequestKey, json.RawMessage(req)))
+			r.fields = append(r.fields, zap.Reflect(rawRequestKey, json.RawMessage(req)))
 		}
 	}
 }

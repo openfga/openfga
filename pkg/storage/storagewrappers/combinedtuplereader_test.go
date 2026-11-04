@@ -1229,3 +1229,89 @@ func Test_filterTuples(t *testing.T) {
 		})
 	}
 }
+
+func Test_combinedTupleReader_ReadStartingWithUser_Sorted(t *testing.T) {
+	ctx := context.Background()
+
+	filter := storage.ReadStartingWithUserFilter{
+		ObjectType: "group",
+		Relation:   "member",
+		UserFilter: []*openfgav1.ObjectRelation{{Object: "user:u"}, {Object: "user:*"}},
+	}
+	sorted := storage.ReadStartingWithUserOptions{WithResultsSortedAscending: true}
+
+	run := func(t *testing.T, contextual []*openfgav1.TupleKey, stored []*openfgav1.TupleKey) []string {
+		t.Helper()
+		ctrl, reader := makeMocks(t)
+		defer ctrl.Finish()
+
+		storedTuples := make([]*openfgav1.Tuple, 0, len(stored))
+		for _, k := range stored {
+			storedTuples = append(storedTuples, &openfgav1.Tuple{Key: k})
+		}
+		reader.EXPECT().
+			ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(storedTuples), nil)
+
+		iter, err := NewCombinedTupleReader(reader, contextual).ReadStartingWithUser(ctx, "store", filter, sorted)
+		require.NoError(t, err)
+		t.Cleanup(iter.Stop)
+
+		var got []string
+		for {
+			tup, err := iter.Next(ctx)
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return got
+			}
+			require.NoError(t, err)
+			got = append(got, tuple.TupleKeyWithConditionToString(tup.GetKey()))
+		}
+	}
+
+	t.Run("stored_user_and_wildcard_on_same_object_are_both_returned", func(t *testing.T) {
+		got := run(t, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("group:1", "member", "user:u", "cond", nil),
+			tuple.NewTupleKey("group:1", "member", "user:*"),
+			tuple.NewTupleKey("group:2", "member", "user:u"),
+		})
+		require.Equal(t, []string{
+			"group:1#member@user:u (condition cond)",
+			"group:1#member@user:*",
+			"group:2#member@user:u",
+		}, got)
+	})
+
+	t.Run("contextual_tuple_shadows_stored_tuple_for_same_object_and_user", func(t *testing.T) {
+		got := run(t,
+			[]*openfgav1.TupleKey{tuple.NewTupleKeyWithCondition("group:1", "member", "user:u", "cond", nil)},
+			[]*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:u"),
+				tuple.NewTupleKey("group:1", "member", "user:*"),
+			})
+		// the stored plain user:u must be dropped (contextual wins, as ReadUserTuple does); user:* is a different user
+		require.Equal(t, []string{
+			"group:1#member@user:u (condition cond)",
+			"group:1#member@user:*",
+		}, got)
+	})
+
+	t.Run("contextual_shadowing_is_per_object", func(t *testing.T) {
+		got := run(t,
+			[]*openfgav1.TupleKey{tuple.NewTupleKeyWithCondition("group:1", "member", "user:u", "cond", nil)},
+			[]*openfgav1.TupleKey{tuple.NewTupleKey("group:2", "member", "user:u")})
+		require.Equal(t, []string{
+			"group:1#member@user:u (condition cond)",
+			"group:2#member@user:u",
+		}, got)
+	})
+
+	t.Run("contextual_wildcard_does_not_shadow_stored_wildcard", func(t *testing.T) {
+		got := run(t,
+			[]*openfgav1.TupleKey{tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "cond", nil)},
+			[]*openfgav1.TupleKey{tuple.NewTupleKey("group:1", "member", "user:*")})
+		require.Equal(t, []string{
+			"group:1#member@user:* (condition cond)",
+			"group:1#member@user:*",
+		}, got)
+	})
+}

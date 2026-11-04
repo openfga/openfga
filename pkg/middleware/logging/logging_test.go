@@ -97,6 +97,9 @@ func TestNewLoggingInterceptor_concrete(t *testing.T) {
 	assert.NotEmpty(t, output.UserAgent)
 	assert.NotEmpty(t, output.RawRequest)
 	assert.NotEmpty(t, output.RawResponse)
+	// Must be embedded JSON objects, not quoted strings (jsontext.Value is a fmt.Stringer on Go 1.27+).
+	assert.True(t, bytes.HasPrefix(output.RawRequest, []byte("{")), "raw_request: %s", output.RawRequest)
+	assert.True(t, bytes.HasPrefix(output.RawResponse, []byte("{")), "raw_response: %s", output.RawResponse)
 	assert.NotEmpty(t, output.QueryDurationMs)
 	assert.NotEmpty(t, output.PeerAddress)
 	assert.NotEmpty(t, output.RequestID)
