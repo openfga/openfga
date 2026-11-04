@@ -316,3 +316,44 @@ func TestDeterministicMarshalOpts(t *testing.T) {
 	require.Equal(t, b1, b2, "DeterministicMarshalOpts must produce identical bytes across calls")
 	require.True(t, DeterministicMarshalOpts.Deterministic)
 }
+
+// recordingConnection captures the context the query was issued with.
+type recordingConnection struct {
+	queryCtx context.Context
+}
+
+func (c *recordingConnection) Query(ctx context.Context, _ string, _ ...any) (Rows, error) {
+	c.queryCtx = ctx
+	return &stubRows{}, nil
+}
+
+func (c *recordingConnection) Close() error { return nil }
+
+type recordingConnector struct {
+	conn *recordingConnection
+}
+
+func (c *recordingConnector) Connect(context.Context) (Connection, error) { return c.conn, nil }
+
+func TestRowGetterKeepsCallerDeadline(t *testing.T) {
+	t.Parallel()
+
+	conn := &recordingConnection{}
+	rg := &rowGetter{connector: &recordingConnector{conn: conn}, statement: "SELECT 1"}
+
+	deadline := time.Now().Add(time.Minute)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	rows, err := rg.GetRows(ctx)
+	require.NoError(t, err)
+
+	got, ok := conn.queryCtx.Deadline()
+	require.True(t, ok, "query context lost the caller deadline")
+	require.WithinDuration(t, deadline, got, time.Millisecond)
+
+	// rows are read lazily, so cancelling the caller must not tear the query down.
+	cancel()
+	require.NoError(t, conn.queryCtx.Err())
+
+	require.NoError(t, rows.Close())
+	require.ErrorIs(t, conn.queryCtx.Err(), context.Canceled)
+}
