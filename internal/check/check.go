@@ -1000,7 +1000,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	if true { // TODO: always take this path for now, update after SQL strategy is added
 		// if r.datastore.Querier(req.Consistency) == nil {{
 		switch groupEdge.Node.GetNodeType() {
-		case graph.SpecificTypeAndRelation:
+		case graph.SpecificTypeAndRelation, graph.LogicalDirectGrouping:
 			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
 		case graph.OperatorNode:
 			switch groupEdge.Node.GetLabel() {
