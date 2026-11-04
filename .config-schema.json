@@ -51,7 +51,7 @@
             "x-env-variable": "OPENFGA_MAX_CHECKS_PER_BATCH_CHECK"
         },
         "maxContextualTuples": {
-            "description": "The maximum number of contextual tuples allowed per request.",
+            "description": "The maximum number of contextual tuples allowed per request. Applies to Check, BatchCheck (per check), ListObjects, StreamedListObjects, ListUsers and Expand. Must be greater than zero.",
             "type": "integer",
             "default": 100,
             "minimum": 1,
@@ -378,7 +378,7 @@
                     "x-env-variable": "OPENFGA_GRPC_ADDR"
                 },
                 "maxRecvMsgBytes": {
-                    "description": "The maximum size, in bytes, of a received gRPC message.",
+                    "description": "The maximum size, in bytes, of a received gRPC message. The same limit is applied to HTTP request bodies, which are rejected with `413 Request Entity Too Large` when they exceed it.",
                     "type": "integer",
                     "default": 616448,
                     "minimum": 1,
