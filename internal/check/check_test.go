@@ -7307,3 +7307,82 @@ func TestCheck_MultiBranchRecursionOnSameRelation(t *testing.T) {
 		})
 	}
 }
+
+func TestCheck_LogicalDirectGroupingOperand(t *testing.T) {
+	tests := []struct {
+		name   string
+		dsl    string
+		tuples []*openfgav1.TupleKey
+	}{
+		{
+			name: "exclusion_base_is_multi_type_direct_assignment",
+			dsl: `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define blocked: [user]
+				    define viewer: [user, user:*] but not blocked`,
+			tuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "viewer", "user:maria")},
+		},
+		{
+			name: "intersection_operand_is_multi_type_direct_assignment",
+			dsl: `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define c: [user]
+				    define viewer: [user, user:*] and c`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "c", "user:maria"),
+			},
+		},
+		{
+			// control: union flattens through the grouping node, so it never reaches ResolveLogicalEdge with it
+			name: "control_union_with_multi_type_direct_assignment",
+			dsl: `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define c: [user]
+				    define viewer: [user, user:*] or c`,
+			tuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "viewer", "user:maria")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(tt.dsl))
+			require.NoError(t, err)
+
+			ds := memory.New()
+			storeID := ulid.Make().String()
+			require.NoError(t, ds.Write(context.Background(), storeID, nil, tt.tuples))
+
+			resolver := New(Config{
+				Model:            mg,
+				Datastore:        ds,
+				Cache:            storage.NewNoopCache(),
+				Planner:          planner.New(&planner.Config{}),
+				ConcurrencyLimit: 10,
+			})
+
+			req, err := NewRequest(RequestParams{
+				StoreID:  storeID,
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			})
+			require.NoError(t, err)
+
+			res, err := resolver.ResolveCheck(context.Background(), req)
+			require.NoError(t, err, "ResolveCheck must not fail for a valid model/tuple")
+			require.True(t, res.GetAllowed())
+		})
+	}
+}
