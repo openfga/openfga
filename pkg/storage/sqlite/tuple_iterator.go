@@ -13,6 +13,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
@@ -56,6 +57,9 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	if err != nil {
 		storageErr := t.handleSQLError(err)
 		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
+		if !storage.SuccessLabel(storageErr) {
+			telemetry.TraceError(span, storageErr)
+		}
 		return storageErr
 	}
 	storage.ObserveIterQueryDuration(true, elapsed)
