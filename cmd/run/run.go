@@ -36,6 +36,7 @@ import (
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -427,8 +428,49 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
-	serverCtx := &ServerContext{Logger: logger}
+	logOpts := []logger.OptionLogger{
+		logger.WithFormat(config.Log.Format),
+		logger.WithLevel(config.Log.Level),
+		logger.WithTimestampFormat(config.Log.TimestampFormat),
+	}
+
+	otlpLogsEnabled := logOTLPEnabled(config)
+
+	var logProviderCloser func() error
+	if otlpLogsEnabled {
+		otelCore, closer := newOTELLogCore(config)
+		logProviderCloser = closer
+		logOpts = append(logOpts,
+			logger.WithOTELCore(otelCore),
+			// zap.Fatal calls os.Exit, which skips deferred functions. Flush
+			// the buffered records (including the fatal one) via the fatal hook.
+			logger.WithFatalHook(func() { _ = logProviderCloser() }),
+		)
+	}
+
+	l, err := logger.NewLogger(logOpts...)
+	if err != nil {
+		if logProviderCloser != nil {
+			_ = logProviderCloser()
+		}
+		panic(err)
+	}
+
+	// Deferred so that buffered log records are flushed to the collector even
+	// when the server exits through the panic below.
+	defer func() {
+		if logProviderCloser != nil {
+			if err := logProviderCloser(); err != nil {
+				l.Error("failed to shutdown OTLP log provider", zap.Error(err))
+			}
+		}
+	}()
+
+	if otlpLogsEnabled {
+		l.Info(fmt.Sprintf("📋 OTLP log export enabled: exporter '%s'", os.Getenv("OTEL_LOGS_EXPORTER")))
+	}
+
+	serverCtx := &ServerContext{Logger: l}
 	if err := serverCtx.Run(context.Background(), config); err != nil {
 		panic(err)
 	}
@@ -448,6 +490,34 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 		}
 	}
 	return uintArray
+}
+
+// logOTLPEnabled reports whether OTLP log export is active, as selected by the
+// standard OTEL_LOGS_EXPORTER environment variable. A log level of "none"
+// produces a noop logger with nothing to export.
+func logOTLPEnabled(config *serverconfig.Config) bool {
+	return telemetry.OTLPLogsEnabled() && config.Log.Level != "none"
+}
+
+// newOTELLogCore creates an otelzap bridge core backed by an OTLP log provider
+// and returns a shutdown function that flushes and stops the provider.
+func newOTELLogCore(config *serverconfig.Config) (*otelzap.Core, func() error) {
+	lp := telemetry.MustNewLoggerProvider(
+		context.Background(),
+		telemetry.WithLogAttributes(
+			semconv.ServiceNameKey.String(config.Trace.ServiceName),
+			semconv.ServiceVersionKey.String(build.Version),
+		),
+	)
+	core := otelzap.NewCore("openfga", otelzap.WithLoggerProvider(lp))
+
+	shutdown := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer cancel()
+		return errors.Join(lp.ForceFlush(ctx), lp.Shutdown(ctx))
+	}
+
+	return core, shutdown
 }
 
 // telemetryConfig returns the function that must be called to shut down tracing.

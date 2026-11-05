@@ -1246,6 +1246,8 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Log.Format)
 
+	require.False(t, res.Get("properties.log.properties.otlp").Exists())
+
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTuplesPerWrite)
@@ -1507,6 +1509,29 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.shutdownTimeout.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.ShutdownTimeout.String())
+}
+
+func TestOTLPLogsEnabled(t *testing.T) {
+	tests := []struct {
+		name         string
+		logsExporter string
+		level        string
+		want         bool
+	}{
+		{name: "unset_is_disabled", logsExporter: "", level: "info", want: false},
+		{name: "none_is_disabled", logsExporter: "none", level: "info", want: false},
+		{name: "otlp_enables_export", logsExporter: "otlp", level: "info", want: true},
+		{name: "console_enables_export", logsExporter: "console", level: "info", want: true},
+		{name: "none_level_disables_export", logsExporter: "otlp", level: "none", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OTEL_LOGS_EXPORTER", tt.logsExporter)
+			cfg := serverconfig.DefaultConfig()
+			cfg.Log.Level = tt.level
+			require.Equal(t, tt.want, logOTLPEnabled(cfg))
+		})
+	}
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
