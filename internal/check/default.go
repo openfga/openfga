@@ -41,18 +41,18 @@ func NewDefault(model *modelgraph.AuthorizationModelGraph, resolver CheckResolve
 var _ GroupStrategy = &DefaultStrategy{}
 var _ EdgeStrategy = &DefaultStrategy{}
 
-func (s *DefaultStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+func (s *DefaultStrategy) Union(ctx context.Context, req *Request, edge *LogicalEdge) (*Response, error) {
 	edges := edge.Explode()
-	// nil visited: a GroupEdge holds only weight-1 edges, which are never cyclic or recursive.
+	// nil visited: a group LogicalEdge holds only weight-1 edges, which are never cyclic or recursive.
 	return s.resolver.ResolveUnionEdges(ctx, req, edges, nil)
 }
 
-func (s *DefaultStrategy) Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+func (s *DefaultStrategy) Intersection(ctx context.Context, req *Request, edge *LogicalEdge) (*Response, error) {
 	edges := edge.Explode()
 	return s.resolver.ResolveIntersectionEdges(ctx, req, edges)
 }
 
-func (s *DefaultStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+func (s *DefaultStrategy) Exclusion(ctx context.Context, req *Request, edge *LogicalEdge) (*Response, error) {
 	edges := edge.Explode()
 	return s.resolver.ResolveExclusionEdges(ctx, req, edges)
 }
