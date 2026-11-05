@@ -946,7 +946,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 
 	// Exclusion expects edges[0] to be the base edge or a group LogicalEdge{base, subtract} if both are
 	// weight-1, and edges[1] to be the subtract edge if applicable; can't call GatherLogicalEdges
-	// as that may change the order.
+	// as that may change the order. A lone base edge or group skips ResolveExclusionEdges.
 	var logicalEdges []LogicalEdge
 	switch {
 	case !subtractHasPath:
@@ -956,6 +956,10 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 	default:
 		// at least one edge has weight > 1, can't group
 		logicalEdges = []LogicalEdge{{Edges: edges[0:1:1]}, {Edges: edges[1:2:2]}}
+	}
+
+	if len(logicalEdges) == 1 {
+		return r.ResolveLogicalEdge(ctx, req, &logicalEdges[0], nil)
 	}
 
 	return r.ResolveExclusionEdges(ctx, req, logicalEdges)
