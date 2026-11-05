@@ -795,6 +795,11 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	}
 
 	logicalEdges := r.GatherLogicalEdges(req, node, edges)
+
+	if len(logicalEdges) == 1 {
+		return r.ResolveLogicalEdge(ctx, req, logicalEdges[0], nil)
+	}
+
 	return r.ResolveIntersectionEdges(ctx, req, logicalEdges)
 }
 
