@@ -20,11 +20,11 @@ type CheckResolver interface {
 	ResolveExclusionEdges(context.Context, *Request, []LogicalEdge) (*Response, error)
 }
 
-// GroupStrategy resolves a GroupEdge (edges bundled under one operator node) as a set operation.
+// GroupStrategy resolves a group LogicalEdge (edges bundled under one operator node) as a set operation.
 type GroupStrategy interface {
-	Union(context.Context, *Request, *GroupEdge) (*Response, error)
-	Intersection(context.Context, *Request, *GroupEdge) (*Response, error)
-	Exclusion(context.Context, *Request, *GroupEdge) (*Response, error)
+	Union(context.Context, *Request, *LogicalEdge) (*Response, error)
+	Intersection(context.Context, *Request, *LogicalEdge) (*Response, error)
+	Exclusion(context.Context, *Request, *LogicalEdge) (*Response, error)
 }
 
 // EdgeStrategy resolves a single userset or TTU edge by expanding its tuples.

@@ -128,48 +128,48 @@ func (m *MockGroupStrategy) EXPECT() *MockGroupStrategyMockRecorder {
 }
 
 // Exclusion mocks base method.
-func (m *MockGroupStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+func (m *MockGroupStrategy) Exclusion(arg0 context.Context, arg1 *Request, arg2 *LogicalEdge) (*Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Exclusion", ctx, req, edge)
+	ret := m.ctrl.Call(m, "Exclusion", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Exclusion indicates an expected call of Exclusion.
-func (mr *MockGroupStrategyMockRecorder) Exclusion(ctx, req, edge any) *gomock.Call {
+func (mr *MockGroupStrategyMockRecorder) Exclusion(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exclusion", reflect.TypeOf((*MockGroupStrategy)(nil).Exclusion), ctx, req, edge)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exclusion", reflect.TypeOf((*MockGroupStrategy)(nil).Exclusion), arg0, arg1, arg2)
 }
 
 // Intersection mocks base method.
-func (m *MockGroupStrategy) Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+func (m *MockGroupStrategy) Intersection(arg0 context.Context, arg1 *Request, arg2 *LogicalEdge) (*Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Intersection", ctx, req, edge)
+	ret := m.ctrl.Call(m, "Intersection", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Intersection indicates an expected call of Intersection.
-func (mr *MockGroupStrategyMockRecorder) Intersection(ctx, req, edge any) *gomock.Call {
+func (mr *MockGroupStrategyMockRecorder) Intersection(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Intersection", reflect.TypeOf((*MockGroupStrategy)(nil).Intersection), ctx, req, edge)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Intersection", reflect.TypeOf((*MockGroupStrategy)(nil).Intersection), arg0, arg1, arg2)
 }
 
 // Union mocks base method.
-func (m *MockGroupStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+func (m *MockGroupStrategy) Union(arg0 context.Context, arg1 *Request, arg2 *LogicalEdge) (*Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Union", ctx, req, edge)
+	ret := m.ctrl.Call(m, "Union", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Union indicates an expected call of Union.
-func (mr *MockGroupStrategyMockRecorder) Union(ctx, req, edge any) *gomock.Call {
+func (mr *MockGroupStrategyMockRecorder) Union(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Union", reflect.TypeOf((*MockGroupStrategy)(nil).Union), ctx, req, edge)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Union", reflect.TypeOf((*MockGroupStrategy)(nil).Union), arg0, arg1, arg2)
 }
 
 // MockEdgeStrategy is a mock of EdgeStrategy interface.
@@ -197,31 +197,31 @@ func (m *MockEdgeStrategy) EXPECT() *MockEdgeStrategyMockRecorder {
 }
 
 // TTU mocks base method.
-func (m *MockEdgeStrategy) TTU(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, arg4 *sync.Map) (*Response, error) {
+func (m *MockEdgeStrategy) TTU(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelEdge, arg3 storage.TupleKeyIterator, arg4 *sync.Map) (*Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TTU", ctx, req, edge, iter, arg4)
+	ret := m.ctrl.Call(m, "TTU", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(*Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // TTU indicates an expected call of TTU.
-func (mr *MockEdgeStrategyMockRecorder) TTU(ctx, req, edge, iter, arg4 any) *gomock.Call {
+func (mr *MockEdgeStrategyMockRecorder) TTU(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TTU", reflect.TypeOf((*MockEdgeStrategy)(nil).TTU), ctx, req, edge, iter, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TTU", reflect.TypeOf((*MockEdgeStrategy)(nil).TTU), arg0, arg1, arg2, arg3, arg4)
 }
 
 // Userset mocks base method.
-func (m *MockEdgeStrategy) Userset(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, arg4 *sync.Map) (*Response, error) {
+func (m *MockEdgeStrategy) Userset(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelEdge, arg3 storage.TupleKeyIterator, arg4 *sync.Map) (*Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Userset", ctx, req, edge, iter, arg4)
+	ret := m.ctrl.Call(m, "Userset", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(*Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Userset indicates an expected call of Userset.
-func (mr *MockEdgeStrategyMockRecorder) Userset(ctx, req, edge, iter, arg4 any) *gomock.Call {
+func (mr *MockEdgeStrategyMockRecorder) Userset(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Userset", reflect.TypeOf((*MockEdgeStrategy)(nil).Userset), ctx, req, edge, iter, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Userset", reflect.TypeOf((*MockEdgeStrategy)(nil).Userset), arg0, arg1, arg2, arg3, arg4)
 }

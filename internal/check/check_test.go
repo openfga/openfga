@@ -271,25 +271,23 @@ func TestResolveUnion(t *testing.T) {
 func TestGatherLogicalEdges(t *testing.T) {
 	// describe renders each LogicalEdge as a comparable string so results can be asserted
 	// with ElementsMatch; ordering is intentionally ignored since GatherLogicalEdges does
-	// not preserve edge ordering. A GroupEdge is rendered as "group:[<sorted to labels>]"
-	// and a SingleEdge as "single:<to label>".
+	// not preserve edge ordering. A group LogicalEdge is rendered as "group:[<sorted to labels>]"
+	// and a single LogicalEdge as "single:<to label>".
 	describe := func(t *testing.T, les []LogicalEdge) []string {
 		t.Helper()
 		out := make([]string, 0, len(les))
 		for _, le := range les {
-			switch e := le.(type) {
-			case *SingleEdge:
-				out = append(out, "single:"+(*authzGraph.WeightedAuthorizationModelEdge)(e).GetTo().GetUniqueLabel())
-			case *GroupEdge:
-				labels := make([]string, 0, len(e.Edges))
-				for _, edge := range e.Edges {
-					labels = append(labels, edge.GetTo().GetUniqueLabel())
-				}
-				sort.Strings(labels)
-				out = append(out, "group:["+strings.Join(labels, ",")+"]")
-			default:
-				t.Fatalf("unexpected LogicalEdge type %T", le)
+			if le.Node == nil {
+				require.Len(t, le.Edges, 1, "single LogicalEdge must have exactly one edge")
+				out = append(out, "single:"+le.Edges[0].GetTo().GetUniqueLabel())
+				continue
 			}
+			labels := make([]string, 0, len(le.Edges))
+			for _, edge := range le.Edges {
+				labels = append(labels, edge.GetTo().GetUniqueLabel())
+			}
+			sort.Strings(labels)
+			out = append(out, "group:["+strings.Join(labels, ",")+"]")
 		}
 		return out
 	}
@@ -337,7 +335,7 @@ func TestGatherLogicalEdges(t *testing.T) {
 			expected: []string{"single:group#member"},
 		},
 		{
-			// node weight-1: all edges are weight-1 and combined into a single GroupEdge.
+			// node weight-1: all edges are weight-1 and combined into one group LogicalEdge.
 			name: "node_weight_one_multiple_edges_returns_single_group_edge",
 			model: `
 				model
@@ -354,7 +352,7 @@ func TestGatherLogicalEdges(t *testing.T) {
 			expected: []string{"group:[user,user]"},
 		},
 		{
-			// node weight > 1 with no weight-1 edges: every edge becomes its own SingleEdge.
+			// node weight > 1 with no weight-1 edges: every edge becomes its own single LogicalEdge.
 			name: "split_zero_weight_one_edges",
 			model: `
 				model
@@ -377,7 +375,7 @@ func TestGatherLogicalEdges(t *testing.T) {
 		},
 		{
 			// node weight > 1 with exactly one weight-1 edge: the lone weight-1 edge becomes a
-			// SingleEdge (not a GroupEdge), alongside the weight-2 edge as its own SingleEdge.
+			// single LogicalEdge (not a group LogicalEdge), alongside the weight-2 edge as its own single LogicalEdge.
 			name: "split_single_weight_one_edge",
 			model: `
 				model
@@ -397,7 +395,7 @@ func TestGatherLogicalEdges(t *testing.T) {
 		},
 		{
 			// node weight > 1 with two weight-1 edges: the weight-1 edges are combined into a
-			// single GroupEdge, and the weight-2 edge is its own SingleEdge.
+			// one group LogicalEdge, and the weight-2 edge is its own single LogicalEdge.
 			name: "split_multiple_weight_one_edges",
 			model: `
 				model
@@ -471,7 +469,7 @@ func TestGatherLogicalEdges(t *testing.T) {
 	})
 
 	t.Run("recursive_flatten_groups_same_weight_one_edges", func(t *testing.T) {
-		// A GroupEdge is cached under NodeCacheKey(node), so ResolveRecursive (which flattens
+		// A group LogicalEdge is cached under NodeCacheKey(node), so ResolveRecursive (which flattens
 		// node while skipping the recursive relation) must group the same weight-1 edges that
 		// ResolveUnion's full flatten of node would.
 		models := map[string]string{
@@ -1455,7 +1453,7 @@ func TestResolveIntersection(t *testing.T) {
 
 	t.Run("groups_weight_one_edges_alongside_higher_weight_edge", func(t *testing.T) {
 		// The intersection has weight 2 for user: owner and editor (weight-1) are grouped into
-		// one GroupEdge, while member from parent (weight-2) stays a separate SingleEdge.
+		// one group LogicalEdge, while member from parent (weight-2) stays a separate single LogicalEdge.
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
 			  schema 1.1
@@ -1520,9 +1518,9 @@ func TestResolveIntersection(t *testing.T) {
 				require.True(t, ok)
 				logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
 				require.Len(t, logicalEdges, 2)
-				require.IsType(t, &GroupEdge{}, logicalEdges[0])
-				require.Len(t, logicalEdges[0].(*GroupEdge).Edges, 2)
-				require.IsType(t, &SingleEdge{}, logicalEdges[1])
+				require.NotNil(t, logicalEdges[0].Node)
+				require.Len(t, logicalEdges[0].Edges, 2)
+				require.Nil(t, logicalEdges[1].Node)
 
 				res, err := resolver.ResolveIntersection(context.Background(), req, node)
 				require.NoError(t, err)
@@ -1532,7 +1530,7 @@ func TestResolveIntersection(t *testing.T) {
 	})
 
 	t.Run("resolves_nested_union_operand_as_group_edge", func(t *testing.T) {
-		// (a or b) is a weight-1 union operator node; resolving it produces a GroupEdge on the union
+		// (a or b) is a weight-1 union operator node; resolving it produces a group LogicalEdge on the union
 		// operator node rather than on a relation node.
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -2245,7 +2243,7 @@ func TestResolveExclusion(t *testing.T) {
 			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 			mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
-			// weight-2 base and weight-1 subtract, so they are resolved as two separate SingleEdges.
+			// weight-2 base and weight-1 subtract, so they are resolved as two separate single LogicalEdges.
 			model := testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1

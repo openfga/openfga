@@ -36,34 +36,31 @@ var ErrUsersetInvalidRequest = errors.New("userset request cannot be resolved wh
 var ErrPanicRequest = errors.New("invalid check request")
 var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved when intersection or exclusion is involved")
 
-type LogicalEdge interface {
-	CacheKey(req *Request) keys.Key
-}
-
-// GroupEdge bundles weight-1 Edges that share a parent Node.
-type GroupEdge struct {
+// LogicalEdge is either a single edge (Node nil, exactly one entry in Edges) or a group of
+// weight-1 Edges that share a parent Node (Node set).
+type LogicalEdge struct {
 	Node  *graph.WeightedAuthorizationModelNode
 	Edges []*graph.WeightedAuthorizationModelEdge
 }
 
-func (e *GroupEdge) CacheKey(req *Request) keys.Key {
+// CacheKey returns EdgeCacheKey for a single edge or NodeCacheKey for a group. A group's key
+// covers only its Node, not its Edges, so every group built for a given Node and Request
+// must contain the same Edges; otherwise a cached result for one edge set is served for another.
+func (e *LogicalEdge) CacheKey(req *Request) keys.Key {
+	if e.Node == nil {
+		return EdgeCacheKey(req, e.Edges[0])
+	}
 	return NodeCacheKey(req, e.Node)
 }
 
-// Explode returns each edge in e as a SingleEdge.
-func (e *GroupEdge) Explode() []LogicalEdge {
+// Explode returns each edge in e as a single LogicalEdge.
+func (e *LogicalEdge) Explode() []LogicalEdge {
 	logicalEdges := make([]LogicalEdge, 0, len(e.Edges))
 
-	for _, edge := range e.Edges {
-		logicalEdges = append(logicalEdges, (*SingleEdge)(edge))
+	for i := range e.Edges {
+		logicalEdges = append(logicalEdges, LogicalEdge{Edges: e.Edges[i : i+1 : i+1]})
 	}
 	return logicalEdges
-}
-
-type SingleEdge graph.WeightedAuthorizationModelEdge
-
-func (s *SingleEdge) CacheKey(req *Request) keys.Key {
-	return EdgeCacheKey(req, (*graph.WeightedAuthorizationModelEdge)(s))
 }
 
 type Config struct {
@@ -318,13 +315,13 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 	out := make(chan ResponseMsg, len(edges))
 
-	for i, edge := range edges {
+	for i := range edges {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 
 		pool.Go(func() error {
-			res, err := r.ResolveLogicalEdge(ctx, req, edge, visited)
+			res, err := r.ResolveLogicalEdge(ctx, req, &edges[i], visited)
 			if err != nil {
 				telemetry.TraceError(span, err)
 			} else if ctx.Err() == nil {
@@ -393,15 +390,15 @@ func (r *Resolver) SplitWeightOne(terminal string, edges ...*graph.WeightedAutho
 }
 
 // GatherLogicalEdges returns the LogicalEdge-s for edges. All weight-1 edges are combined in a
-// GroupEdge and each weight > 1 edge is a SingleEdge. Edge ordering is NOT preserved.
+// group LogicalEdge and each weight > 1 edge is a single LogicalEdge. Edge ordering is NOT preserved.
 func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthorizationModelNode, edges []*graph.WeightedAuthorizationModelEdge) []LogicalEdge {
 	if len(edges) == 1 {
-		return []LogicalEdge{(*SingleEdge)(edges[0])}
+		return []LogicalEdge{{Edges: []*graph.WeightedAuthorizationModelEdge{edges[0]}}}
 	}
 
 	if nodeWeight, _ := r.model.GetNodeWeight(node, req.GetUserType()); nodeWeight == 1 {
 		// If the node is weight-1, all of its edges are weight-1
-		return []LogicalEdge{&GroupEdge{Node: node, Edges: edges}}
+		return []LogicalEdge{{Node: node, Edges: edges}}
 	}
 
 	weightOneEdges, weightTwoPlusEdges := r.SplitWeightOne(req.GetUserType(), edges...)
@@ -412,13 +409,13 @@ func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthoriz
 	switch len(weightOneEdges) {
 	case 0:
 	case 1:
-		logicalEdges = append(logicalEdges, (*SingleEdge)(weightOneEdges[0]))
+		logicalEdges = append(logicalEdges, LogicalEdge{Edges: []*graph.WeightedAuthorizationModelEdge{weightOneEdges[0]}})
 	default:
-		logicalEdges = append(logicalEdges, &GroupEdge{Node: node, Edges: weightOneEdges})
+		logicalEdges = append(logicalEdges, LogicalEdge{Node: node, Edges: weightOneEdges})
 	}
 
 	for _, edge := range weightTwoPlusEdges {
-		logicalEdges = append(logicalEdges, (*SingleEdge)(edge))
+		logicalEdges = append(logicalEdges, LogicalEdge{Edges: []*graph.WeightedAuthorizationModelEdge{edge}})
 	}
 	return logicalEdges
 }
@@ -737,14 +734,14 @@ func (r *Resolver) ResolveIntersectionEdges(ctx context.Context, req *Request, e
 
 	out := make(chan ResponseMsg, len(edges))
 
-	for _, edge := range edges {
+	for i := range edges {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 
 		pool.Go(func() error {
 			// nil visited since intersection is never part of a cycle or recursion
-			res, err := r.ResolveLogicalEdge(ctx, req, edge, nil)
+			res, err := r.ResolveLogicalEdge(ctx, req, &edges[i], nil)
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 			return nil
 		})
@@ -797,7 +794,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	logicalEdges := r.GatherLogicalEdges(req, node, edges)
 
 	if len(logicalEdges) == 1 {
-		return r.ResolveLogicalEdge(ctx, req, logicalEdges[0], nil)
+		return r.ResolveLogicalEdge(ctx, req, &logicalEdges[0], nil)
 	}
 
 	return r.ResolveIntersectionEdges(ctx, req, logicalEdges)
@@ -828,11 +825,11 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 
 	chBase := make(chan ResponseMsg, 1)
 
-	// edges[0] is either *SingleEdge (base) or *GroupEdge{base, subtract}.
-	// ResolveLogicalEdge will handle resolving the GroupEdge as an exclusion.
+	// edges[0] is either a single LogicalEdge (base) or a group LogicalEdge{base, subtract}.
+	// ResolveLogicalEdge will handle resolving the group LogicalEdge as an exclusion.
 	pool.Go(func() error {
 		// nil visited, since exclusion is never part of a cycle or recursion
-		res, err := r.ResolveLogicalEdge(ctx, req, edges[0], nil)
+		res, err := r.ResolveLogicalEdge(ctx, req, &edges[0], nil)
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, chBase)
 		close(chBase)
 		return nil
@@ -842,7 +839,7 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 
 	if len(edges) > 1 {
 		chSubtract = make(chan ResponseMsg, 1)
-		subtractEdge := edges[1]
+		subtractEdge := &edges[1]
 
 		pool.Go(func() error {
 			// nil visited, since exclusion is never part of a cycle or recursion
@@ -936,18 +933,18 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 		edges = edges[:1]
 	}
 
-	// Exclusion expects edges[0] to be the base edge or GroupEdge{base, subtract} if both are
+	// Exclusion expects edges[0] to be the base edge or a group LogicalEdge{base, subtract} if both are
 	// weight-1, and edges[1] to be the subtract edge if applicable; can't call GatherLogicalEdges
 	// as that may change the order.
 	var logicalEdges []LogicalEdge
 	switch {
 	case !subtractHasPath:
-		logicalEdges = []LogicalEdge{(*SingleEdge)(edges[0])}
+		logicalEdges = []LogicalEdge{{Edges: []*graph.WeightedAuthorizationModelEdge{edges[0]}}}
 	case baseWeight == 1 && subtractWeight == 1:
-		logicalEdges = []LogicalEdge{&GroupEdge{Node: node, Edges: edges}}
+		logicalEdges = []LogicalEdge{{Node: node, Edges: edges}}
 	default:
 		// at least one edge has weight > 1, can't group
-		logicalEdges = []LogicalEdge{(*SingleEdge)(edges[0]), (*SingleEdge)(edges[1])}
+		logicalEdges = []LogicalEdge{{Edges: []*graph.WeightedAuthorizationModelEdge{edges[0]}}, {Edges: []*graph.WeightedAuthorizationModelEdge{edges[1]}}}
 	}
 
 	return r.ResolveExclusionEdges(ctx, req, logicalEdges)
@@ -998,26 +995,24 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *graph.We
 	}
 }
 
-func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logicalEdge LogicalEdge, visited *sync.Map) (*Response, error) {
-	if singleEdge, ok := logicalEdge.(*SingleEdge); ok {
-		return r.ResolveEdge(ctx, req, (*graph.WeightedAuthorizationModelEdge)(singleEdge), visited)
+func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logicalEdge *LogicalEdge, visited *sync.Map) (*Response, error) {
+	if logicalEdge.Node == nil {
+		return r.ResolveEdge(ctx, req, logicalEdge.Edges[0], visited)
 	}
-
-	groupEdge := logicalEdge.(*GroupEdge)
 
 	if true { // TODO: always take this path for now, update after SQL strategy is added
 		// if r.datastore.Querier(req.Consistency) == nil {{
-		switch groupEdge.Node.GetNodeType() {
+		switch logicalEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation, graph.LogicalDirectGrouping:
-			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
+			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, logicalEdge)
 		case graph.OperatorNode:
-			switch groupEdge.Node.GetLabel() {
+			switch logicalEdge.Node.GetLabel() {
 			case graph.UnionOperator:
-				return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
+				return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, logicalEdge)
 			case graph.IntersectionOperator:
-				return r.groupStrategies[DefaultPlan.Name].Intersection(ctx, req, groupEdge)
+				return r.groupStrategies[DefaultPlan.Name].Intersection(ctx, req, logicalEdge)
 			case graph.ExclusionOperator:
-				return r.groupStrategies[DefaultPlan.Name].Exclusion(ctx, req, groupEdge)
+				return r.groupStrategies[DefaultPlan.Name].Exclusion(ctx, req, logicalEdge)
 			default:
 				return nil, ErrPanicRequest
 			}
@@ -1026,7 +1021,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 		}
 	}
 
-	planKey := createNodePlanKey(req, groupEdge.Node)
+	planKey := createNodePlanKey(req, logicalEdge.Node)
 	selector := r.planner.GetPlanSelector(planKey)
 
 	candidates := map[string]*planner.PlanConfig{
@@ -1037,17 +1032,17 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	plan := selector.Select(candidates)
 
 	return r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
-		switch groupEdge.Node.GetNodeType() {
+		switch logicalEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation:
-			return r.groupStrategies[plan.Name].Union(ctx, req, groupEdge)
+			return r.groupStrategies[plan.Name].Union(ctx, req, logicalEdge)
 		case graph.OperatorNode:
-			switch groupEdge.Node.GetLabel() {
+			switch logicalEdge.Node.GetLabel() {
 			case graph.UnionOperator:
-				return r.groupStrategies[plan.Name].Union(ctx, req, groupEdge)
+				return r.groupStrategies[plan.Name].Union(ctx, req, logicalEdge)
 			case graph.IntersectionOperator:
-				return r.groupStrategies[plan.Name].Intersection(ctx, req, groupEdge)
+				return r.groupStrategies[plan.Name].Intersection(ctx, req, logicalEdge)
 			case graph.ExclusionOperator:
-				return r.groupStrategies[plan.Name].Exclusion(ctx, req, groupEdge)
+				return r.groupStrategies[plan.Name].Exclusion(ctx, req, logicalEdge)
 			default:
 				return nil, ErrPanicRequest
 			}
