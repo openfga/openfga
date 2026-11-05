@@ -495,7 +495,7 @@ func buildUserFilter(
 
 			filter = &openfgav1.ObjectRelation{Object: tuple.BuildObject(toNode.GetUniqueLabel(), userID)}
 
-		case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
+		case weightedGraph.SpecificTypeWildcard: // Wildcard Reference To() -> "user:*"
 			filter = &openfgav1.ObjectRelation{Object: toNode.GetUniqueLabel()}
 		}
 	}
