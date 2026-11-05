@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added a typed query AST and a `Querier` interface so backends can run queries as structured statements instead of hand-built SQL. This lays the groundwork for future SQL optimizations. [#3316](https://github.com/openfga/openfga/pull/3316)
   - **Breaking change:** This only applies if you use openfga as a library and implement a custom `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL optimizations.
 - Implemented the `Querier` interface for SQLite. [#3322](https://github.com/openfga/openfga/pull/3322)
+- Added experimental flag `check_sql_optimizations`, which, when enabled alongside the `weighted_graph_check` experimental, adds a strategy for weight-1 edges to be combined into a single query for datastores that implement `Querier` (currently only SQLite). [#3320](https://github.com/openfga/openfga/pull/3320), [#3361](https://github.com/openfga/openfga/pull/3361)
 
 ## [1.22.1] - 2026-10-27
 ### Changed
