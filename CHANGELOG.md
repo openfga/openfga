@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
+- Fixed requests intermittently failing with `Request Cancelled` when `--shared-iterator-enabled` is set: if the request that started a shared datastore read was cancelled, concurrent requests sharing that read received its cancellation. They now fall back to reading directly. See `pkg/storage/storagewrappers/sharediterator`.
 
 ## [1.22.1] - 2026-10-27
 ### Changed
