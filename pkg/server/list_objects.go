@@ -205,6 +205,15 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		}
 	}
 
+	if result.ResolutionMetadata.DeadlineExceeded.Load() {
+		// The response holds partial results because the ListObjects
+		// deadline cut the evaluation short. Warn the caller on a
+		// response header so the objects are not mistaken for the
+		// complete set.
+		s.transport.SetHeader(ctx, ListObjectsWarningHeader, ListObjectsDeadlineExceededWarning)
+		grpc_ctxtags.Extract(ctx).Set("request.deadline_exceeded", true)
+	}
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
