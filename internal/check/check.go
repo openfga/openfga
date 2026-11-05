@@ -1018,7 +1018,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	if true { // TODO: always take this path for now, update after SQL strategy is added
 		// if r.datastore.Querier(req.Consistency) == nil {{
 		switch logicalEdge.Node.GetNodeType() {
-		case graph.SpecificTypeAndRelation, graph.LogicalDirectGrouping:
+		case graph.SpecificTypeAndRelation, graph.LogicalDirectGrouping, graph.LogicalTTUGrouping:
 			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, logicalEdge)
 		case graph.OperatorNode:
 			switch logicalEdge.Node.GetLabel() {
@@ -1048,7 +1048,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 
 	return r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
 		switch logicalEdge.Node.GetNodeType() {
-		case graph.SpecificTypeAndRelation, graph.LogicalDirectGrouping:
+		case graph.SpecificTypeAndRelation, graph.LogicalDirectGrouping, graph.LogicalTTUGrouping:
 			return r.groupStrategies[plan.Name].Union(ctx, req, logicalEdge)
 		case graph.OperatorNode:
 			switch logicalEdge.Node.GetLabel() {
