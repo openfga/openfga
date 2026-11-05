@@ -404,7 +404,7 @@ func (r *Resolver) SplitWeightOne(terminal string, edges ...*graph.WeightedAutho
 // group LogicalEdge and each weight > 1 edge is a single LogicalEdge. Edge ordering is NOT preserved.
 func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthorizationModelNode, edges []*graph.WeightedAuthorizationModelEdge) []LogicalEdge {
 	if len(edges) == 1 {
-		return []LogicalEdge{{Edges: []*graph.WeightedAuthorizationModelEdge{edges[0]}}}
+		return []LogicalEdge{{Edges: edges[0:1:1]}}
 	}
 
 	if nodeWeight, _ := r.model.GetNodeWeight(node, req.GetUserType()); nodeWeight == 1 {
@@ -420,13 +420,13 @@ func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthoriz
 	switch len(weightOneEdges) {
 	case 0:
 	case 1:
-		logicalEdges = append(logicalEdges, LogicalEdge{Edges: []*graph.WeightedAuthorizationModelEdge{weightOneEdges[0]}})
+		logicalEdges = append(logicalEdges, LogicalEdge{Edges: weightOneEdges[0:1:1]})
 	default:
 		logicalEdges = append(logicalEdges, LogicalEdge{Node: node, Edges: weightOneEdges})
 	}
 
-	for _, edge := range weightTwoPlusEdges {
-		logicalEdges = append(logicalEdges, LogicalEdge{Edges: []*graph.WeightedAuthorizationModelEdge{edge}})
+	for i := range weightTwoPlusEdges {
+		logicalEdges = append(logicalEdges, LogicalEdge{Edges: weightTwoPlusEdges[i : i+1 : i+1]})
 	}
 	return logicalEdges
 }
@@ -950,12 +950,12 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 	var logicalEdges []LogicalEdge
 	switch {
 	case !subtractHasPath:
-		logicalEdges = []LogicalEdge{{Edges: []*graph.WeightedAuthorizationModelEdge{edges[0]}}}
+		logicalEdges = []LogicalEdge{{Edges: edges[0:1:1]}}
 	case baseWeight == 1 && subtractWeight == 1:
 		logicalEdges = []LogicalEdge{{Node: node, Edges: edges}}
 	default:
 		// at least one edge has weight > 1, can't group
-		logicalEdges = []LogicalEdge{{Edges: []*graph.WeightedAuthorizationModelEdge{edges[0]}}, {Edges: []*graph.WeightedAuthorizationModelEdge{edges[1]}}}
+		logicalEdges = []LogicalEdge{{Edges: edges[0:1:1]}, {Edges: edges[1:2:2]}}
 	}
 
 	return r.ResolveExclusionEdges(ctx, req, logicalEdges)
@@ -1048,7 +1048,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 
 	return r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
 		switch logicalEdge.Node.GetNodeType() {
-		case graph.SpecificTypeAndRelation:
+		case graph.SpecificTypeAndRelation, graph.LogicalDirectGrouping:
 			return r.groupStrategies[plan.Name].Union(ctx, req, logicalEdge)
 		case graph.OperatorNode:
 			switch logicalEdge.Node.GetLabel() {
