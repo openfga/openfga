@@ -2107,6 +2107,159 @@ func TestResolveExclusion(t *testing.T) {
 		require.True(t, res.GetAllowed())
 	})
 
+	t.Run("returns_base_result_when_subtract_has_no_path", func(t *testing.T) {
+		// banned has no path for type user, so only the base edge is resolved and its
+		// result (or error) is the result of the exclusion.
+		dbErr := errors.New("database error")
+		tests := []struct {
+			name        string
+			readErr     error
+			expected    bool
+			expectedErr error
+		}{
+			{
+				name:     "base_false",
+				readErr:  storage.ErrNotFound,
+				expected: false,
+			},
+			{
+				name:        "base_error",
+				readErr:     dbErr,
+				expectedErr: dbErr,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+
+				storeID := ulid.Make().String()
+				mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+				mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
+
+				model := testutils.MustTransformDSLToProtoWithID(`
+					model
+					  schema 1.1
+					type user
+					type usergroup
+					type document
+					  relations
+					    define editor: [user]
+					    define banned: [usergroup]
+					    define viewer: editor but not banned`)
+
+				mg, err := modelgraph.New(model)
+				require.NoError(t, err)
+
+				resolver := New(Config{
+					Model:            mg,
+					Datastore:        mockDatastore,
+					Cache:            storage.NewNoopCache(),
+					ConcurrencyLimit: 10,
+				})
+
+				req, err := NewRequest(RequestParams{
+					StoreID:  storeID,
+					Model:    mg,
+					TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				})
+				require.NoError(t, err)
+
+				// Only the base (editor) edge is read; banned is pruned.
+				mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+						require.Equal(t, "editor", filter.Relation)
+						return nil, tt.readErr
+					}).Times(1)
+
+				edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+				require.True(t, ok)
+
+				res, err := resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
+				if tt.expectedErr != nil {
+					require.ErrorIs(t, err, tt.expectedErr)
+					require.Nil(t, res)
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, res.GetAllowed())
+			})
+		}
+	})
+
+	t.Run("weight_one_base_and_subtract_resolve_as_one_group_exclusion", func(t *testing.T) {
+		// Both edges are weight-1, so they are grouped on the exclusion node and the group
+		// strategy's Exclusion result (or error) is returned unchanged.
+		strategyErr := errors.New("strategy error")
+		tests := []struct {
+			name        string
+			res         *Response
+			err         error
+			expectedErr error
+		}{
+			{name: "allowed", res: &Response{Allowed: true}},
+			{name: "denied", res: &Response{Allowed: false}},
+			{name: "error", err: strategyErr, expectedErr: strategyErr},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+
+				model := testutils.MustTransformDSLToProtoWithID(`
+					model
+					  schema 1.1
+					type user
+					type document
+					  relations
+					    define editor: [user]
+					    define banned: [user]
+					    define viewer: editor but not banned`)
+
+				mg, err := modelgraph.New(model)
+				require.NoError(t, err)
+
+				edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+				require.True(t, ok)
+				exclusionNode := edges[0].GetTo()
+
+				exclusionEdges, ok := mg.GetEdgesFromNode(exclusionNode)
+				require.True(t, ok)
+
+				mockGroupStrategy := NewMockGroupStrategy(ctrl)
+				mockGroupStrategy.EXPECT().
+					Exclusion(gomock.Any(), gomock.Any(), &LogicalEdge{Node: exclusionNode, Edges: exclusionEdges}).
+					Return(tt.res, tt.err).Times(1)
+
+				resolver := New(Config{
+					Model:            mg,
+					Datastore:        mocks.NewMockRelationshipTupleReader(ctrl),
+					Cache:            storage.NewNoopCache(),
+					ConcurrencyLimit: 10,
+					GroupStrategies:  map[string]GroupStrategy{DefaultStrategyName: mockGroupStrategy},
+				})
+
+				req, err := NewRequest(RequestParams{
+					StoreID:  ulid.Make().String(),
+					Model:    mg,
+					TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				})
+				require.NoError(t, err)
+
+				res, err := resolver.ResolveExclusion(context.Background(), req, exclusionNode)
+				if tt.expectedErr != nil {
+					require.ErrorIs(t, err, tt.expectedErr)
+					require.Nil(t, res)
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, tt.res.GetAllowed(), res.GetAllowed())
+			})
+		}
+	})
+
 	t.Run("returns_error_when_wildcard_request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
