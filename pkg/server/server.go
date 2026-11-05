@@ -185,6 +185,7 @@ type Server struct {
 	listUsersMaxResults              uint32
 	maxChecksPerBatchCheck           uint32
 	maxConcurrentChecksPerBatch      uint32
+	maxContextualTuples              uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
 	maxConcurrentReadsForListUsers   uint32
@@ -761,6 +762,13 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithMaxContextualTuples defines the maximum number of contextual tuples allowed per request.
+func WithMaxContextualTuples(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxContextualTuples = max
+	}
+}
+
 func WithCheckDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkDatastoreThrottleThreshold = threshold
@@ -898,6 +906,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxChecksPerBatchCheck:           serverconfig.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecksPerBatch:      serverconfig.DefaultMaxConcurrentChecksPerBatchCheck,
+		maxContextualTuples:              serverconfig.DefaultMaxContextualTuples,
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
@@ -1125,6 +1134,16 @@ func (s *Server) validateAccessControlEnabled() error {
 			return fmt.Errorf("config '--access-control-model-id' must be a valid ULID")
 		}
 	}
+	return nil
+}
+
+// checkContextualTupleCount returns an error if n exceeds the server's
+// configured contextual tuple limit.
+func (s *Server) checkContextualTupleCount(contextualTupleCount int) error {
+	if contextualTupleCount > int(s.maxContextualTuples) {
+		return fmt.Errorf("contextual tuple count %d exceeds server limit %d", contextualTupleCount, s.maxContextualTuples)
+	}
+
 	return nil
 }
 

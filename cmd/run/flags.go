@@ -200,6 +200,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("maxConcurrentChecksPerBatchCheck", flags.Lookup("max-concurrent-checks-per-batch-check"))
 		util.MustBindEnv("maxConcurrentChecksPerBatchCheck", "OPENFGA_MAX_CONCURRENT_CHECKS_PER_BATCH_CHECK")
 
+		util.MustBindPFlag("maxContextualTuples", flags.Lookup("max-contextual-tuples"))
+		util.MustBindEnv("maxContextualTuples", "OPENFGA_MAX_CONTEXTUAL_TUPLES")
+
 		util.MustBindPFlag("maxTuplesPerWrite", flags.Lookup("max-tuples-per-write"))
 		util.MustBindEnv("maxTuplesPerWrite", "OPENFGA_MAX_TUPLES_PER_WRITE", "OPENFGA_MAXTUPLESPERWRITE")
 

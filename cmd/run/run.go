@@ -277,6 +277,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("max-checks-per-batch-check", defaultConfig.MaxChecksPerBatchCheck, "the maximum number of tuples allowed in a BatchCheck request")
 
+	flags.Uint32("max-contextual-tuples", defaultConfig.MaxContextualTuples, "the maximum number of contextual tuples allowed per request")
+
 	flags.Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 
 	flags.Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
@@ -762,6 +764,10 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 	muxOpts := []grpc_runtime.ServeMuxOption{
 		grpc_runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 		grpc_runtime.WithErrorHandler(func(c context.Context, sr *grpc_runtime.ServeMux, mm grpc_runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
+			if strings.Contains(e.Error(), "http: request body too large") {
+				http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+				return
+			}
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
 		}),
@@ -793,6 +799,8 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 	if config.Trace.Enabled {
 		handler = otelhttp.NewHandler(handler, "grpc-gateway")
 	}
+
+	handler = httpmiddleware.MaxBytesMiddleware(int64(config.GRPC.MaxRecvMsgBytes), handler)
 
 	httpServer := &http.Server{
 		Addr: config.HTTP.Addr,
@@ -1111,6 +1119,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithCacheTTLJitterPercentage(config.CacheTTLJitterPercentage),
 		server.WithMaxChecksPerBatchCheck(config.MaxChecksPerBatchCheck),
 		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
+		server.WithMaxContextualTuples(config.MaxContextualTuples),
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
 		server.WithSharedIteratorLimit(config.SharedIterator.Limit),
 		server.WithPlanner(planner.New(&planner.Config{
