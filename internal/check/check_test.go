@@ -758,6 +758,62 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.Nil(t, res)
 	})
 
+	t.Run("invalid_logical_edge_returns_error_before_resolving", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		// No datastore expectations: no edge may be resolved once an invalid edge is found.
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := mg.FlattenNode(node, "user", false, "")
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+
+		// The valid edge is looked up in the cache before the invalid one is reached.
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1)
+
+		logicalEdges := []LogicalEdge{
+			{Edges: []*authzGraph.WeightedAuthorizationModelEdge{edges[0]}},
+			{Edges: edges}, // more than one edge without a Node
+		}
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
+		require.ErrorIs(t, err, ErrInvalidLogicalEdge)
+		require.Nil(t, res)
+	})
+
 	t.Run("empty_edges", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -7065,6 +7121,77 @@ func TestNodeCacheKey_CollisionFreedom(t *testing.T) {
 		other, exists := seen[k]
 		require.False(t, exists, "cache key for %q collides with %q", name, other)
 		seen[k] = name
+	}
+}
+
+func TestLogicalEdge_CacheKey(t *testing.T) {
+	mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(`
+		model
+		  schema 1.1
+		type user
+		type group
+		  relations
+		    define member: [user] or admin
+		    define admin: [user]`))
+	require.NoError(t, err)
+
+	req, err := NewRequest(RequestParams{
+		StoreID:  ulid.Make().String(),
+		Model:    mg,
+		TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+	})
+	require.NoError(t, err)
+
+	node, ok := mg.GetNodeByID("group#member")
+	require.True(t, ok)
+
+	edges, err := mg.FlattenNode(node, "user", false, "")
+	require.NoError(t, err)
+	require.Len(t, edges, 2)
+
+	tests := []struct {
+		name        string
+		edge        LogicalEdge
+		expected    keys.Key
+		expectedErr error
+	}{
+		{
+			name:     "single_edge_without_node",
+			edge:     LogicalEdge{Edges: edges[:1]},
+			expected: EdgeCacheKey(req, edges[0]),
+		},
+		{
+			name:     "single_edge_with_node_uses_edge_key",
+			edge:     LogicalEdge{Node: node, Edges: edges[:1]},
+			expected: EdgeCacheKey(req, edges[0]),
+		},
+		{
+			name:     "group_uses_node_key",
+			edge:     LogicalEdge{Node: node, Edges: edges},
+			expected: NodeCacheKey(req, node),
+		},
+		{
+			name:        "multiple_edges_without_node",
+			edge:        LogicalEdge{Edges: edges},
+			expectedErr: ErrInvalidLogicalEdge,
+		},
+		{
+			name:        "no_edges_without_node",
+			edge:        LogicalEdge{},
+			expectedErr: ErrInvalidLogicalEdge,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key, err := tt.edge.CacheKey(req)
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, key)
+		})
 	}
 }
 

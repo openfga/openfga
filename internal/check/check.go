@@ -35,9 +35,10 @@ var ErrValidation = errors.New("object relation does not exist")
 var ErrUsersetInvalidRequest = errors.New("userset request cannot be resolved when exclusion operation is involved")
 var ErrPanicRequest = errors.New("invalid check request")
 var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved when intersection or exclusion is involved")
+var ErrInvalidLogicalEdge = errors.New("a group of logical edges is required to have an associated node")
 
-// LogicalEdge is either a single edge (Node nil, exactly one entry in Edges) or a group of
-// weight-1 Edges that share a parent Node (Node set).
+// LogicalEdge is either a single edge (exactly one entry in Edges; Node is ignored) or a group
+// of weight-1 Edges that share a parent Node (more than one entry in Edges; Node required).
 type LogicalEdge struct {
 	Node  *graph.WeightedAuthorizationModelNode
 	Edges []*graph.WeightedAuthorizationModelEdge
@@ -46,11 +47,17 @@ type LogicalEdge struct {
 // CacheKey returns EdgeCacheKey for a single edge or NodeCacheKey for a group. A group's key
 // covers only its Node, not its Edges, so every group built for a given Node and Request
 // must contain the same Edges; otherwise a cached result for one edge set is served for another.
-func (e *LogicalEdge) CacheKey(req *Request) keys.Key {
-	if e.Node == nil {
-		return EdgeCacheKey(req, e.Edges[0])
+func (e *LogicalEdge) CacheKey(req *Request) (keys.Key, error) {
+	if len(e.Edges) == 1 {
+		return EdgeCacheKey(req, e.Edges[0]), nil
 	}
-	return NodeCacheKey(req, e.Node)
+
+	// If there are > 1 edges, a Node MUST be present
+	if e.Node == nil {
+		return keys.Key{}, ErrInvalidLogicalEdge
+	}
+
+	return NodeCacheKey(req, e.Node), nil
 }
 
 // Explode returns each edge in e as a single LogicalEdge.
@@ -282,7 +289,11 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	var i int
 	for j := 0; j < len(edges); j++ {
 		edge := edges[j]
-		key := edge.CacheKey(req)
+		key, err := edge.CacheKey(req)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
 		if res, ok := r.isCached(ctx, req.GetConsistency(), key); ok {
 			if res.GetAllowed() {
 				// Short-circuit: a single true in a union causes the whole union to be true
@@ -996,8 +1007,12 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *graph.We
 }
 
 func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logicalEdge *LogicalEdge, visited *sync.Map) (*Response, error) {
-	if logicalEdge.Node == nil {
+	if len(logicalEdge.Edges) == 1 {
 		return r.ResolveEdge(ctx, req, logicalEdge.Edges[0], visited)
+	}
+
+	if logicalEdge.Node == nil {
+		return nil, ErrInvalidLogicalEdge
 	}
 
 	if true { // TODO: always take this path for now, update after SQL strategy is added
