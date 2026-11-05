@@ -38,8 +38,8 @@ func NewDefault(model *modelgraph.AuthorizationModelGraph, resolver CheckResolve
 	}
 }
 
-var _ GroupStrategy = &DefaultStrategy{}
-var _ EdgeStrategy = &DefaultStrategy{}
+var _ GroupStrategy = (*DefaultStrategy)(nil)
+var _ EdgeStrategy = (*DefaultStrategy)(nil)
 
 func (s *DefaultStrategy) Union(ctx context.Context, req *Request, edge *LogicalEdge) (*Response, error) {
 	edges := edge.Explode()
