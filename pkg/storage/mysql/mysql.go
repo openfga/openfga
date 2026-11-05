@@ -39,6 +39,8 @@ type Datastore struct {
 	stbl                      sq.StatementBuilderType // bound to primaryDB; used for writes
 	primaryDB                 *sql.DB
 	secondaryDB               *sql.DB // nil if not configured
+	primaryHealthDB           *sql.DB
+	secondaryHealthDB         *sql.DB
 	dbInfo                    *sqlcommon.DBInfo
 	logger                    logger.Logger
 	primaryDBStatsCollector   prometheus.Collector
@@ -136,11 +138,44 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		primaryDB.Close()
 		return nil, err
 	}
+
+	primaryHealthDB, err := newHealthCheckDB(uri, cfg.Username, cfg.Password, cfg)
+	if err != nil {
+		ds.Close()
+		return nil, fmt.Errorf("initialize mysql primary health check connection: %w", err)
+	}
+	ds.primaryHealthDB = primaryHealthDB
+
+	if secondaryDB != nil {
+		secondaryHealthDB, err := newHealthCheckDB(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
+		if err != nil {
+			ds.Close()
+			return nil, fmt.Errorf("initialize mysql secondary health check connection: %w", err)
+		}
+		ds.secondaryHealthDB = secondaryHealthDB
+	}
+
 	return ds, nil
+}
+
+// newHealthCheckDB opens a single-connection database for readiness checks,
+// so that they do not wait for a connection of the database serving queries when it is saturated.
+func newHealthCheckDB(uri, username, password string, cfg *sqlcommon.Config) (*sql.DB, error) {
+	db, err := initDB(uri, username, password)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+
+	return db, nil
 }
 
 // NewWithDB creates a new [Datastore] storage with the provided database connections.
 // SecondaryDB may be nil if no read replica is configured.
+// Readiness checks use the provided databases; use [New] to run them on dedicated connections.
 func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	primaryCollector, err := configureDB(primaryDB, cfg, "openfga")
 	if err != nil {
@@ -166,6 +201,8 @@ func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastor
 		stbl:                      stbl,
 		primaryDB:                 primaryDB,
 		secondaryDB:               secondaryDB,
+		primaryHealthDB:           primaryDB,
+		secondaryHealthDB:         secondaryDB,
 		dbInfo:                    dbInfo,
 		logger:                    cfg.Logger,
 		primaryDBStatsCollector:   primaryCollector,
@@ -198,11 +235,17 @@ func (s *Datastore) Close() {
 		prometheus.Unregister(s.primaryDBStatsCollector)
 	}
 	s.primaryDB.Close()
+	if s.primaryHealthDB != s.primaryDB {
+		s.primaryHealthDB.Close()
+	}
 	if s.isSecondaryConfigured() {
 		if s.secondaryDBStatsCollector != nil {
 			prometheus.Unregister(s.secondaryDBStatsCollector)
 		}
 		s.secondaryDB.Close()
+		if s.secondaryHealthDB != s.secondaryDB {
+			s.secondaryHealthDB.Close()
+		}
 	}
 }
 
@@ -952,7 +995,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	primaryStatus, err := sqlcommon.IsReady(ctx, s.versionReady, s.primaryDB)
+	primaryStatus, err := sqlcommon.IsReady(ctx, s.versionReady, s.primaryHealthDB)
 	if err != nil {
 		return primaryStatus, err
 	}
@@ -967,7 +1010,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 		primaryStatus.Message = "ready"
 	}
 
-	secondaryStatus, err := sqlcommon.IsReady(ctx, s.versionReady, s.secondaryDB)
+	secondaryStatus, err := sqlcommon.IsReady(ctx, s.versionReady, s.secondaryHealthDB)
 	if err != nil {
 		secondaryStatus.Message = err.Error()
 		secondaryStatus.IsReady = false

@@ -48,6 +48,8 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 type Datastore struct {
 	primaryDB                 *pgxpool.Pool
 	secondaryDB               *pgxpool.Pool
+	primaryHealthDB           *pgxpool.Pool
+	secondaryHealthDB         *pgxpool.Pool
 	logger                    logger.Logger
 	primaryDBStatsCollector   prometheus.Collector
 	secondaryDBStatsCollector prometheus.Collector
@@ -272,7 +274,19 @@ func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (promet
 	return collector, nil
 }
 
+// newHealthCheckPool returns a single-connection pool with the same settings as db,
+// so that readiness checks do not wait for a connection of db when it is saturated.
+func newHealthCheckPool(db *pgxpool.Pool) (*pgxpool.Pool, error) {
+	c := db.Config()
+	c.MaxConns = 1
+	c.MinConns = 0
+	c.MinIdleConns = 0
+
+	return pgxpool.NewWithConfig(context.Background(), c)
+}
+
 // NewWithDB creates a new [Datastore] storage with the provided database connection.
+// Readiness checks use one additional connection per provided pool.
 func NewWithDB(primaryDB, secondaryDB *pgxpool.Pool, cfg *sqlcommon.Config) (*Datastore, error) {
 	primaryCollector, err := configureDB(primaryDB, cfg, "openfga")
 	if err != nil {
@@ -287,9 +301,25 @@ func NewWithDB(primaryDB, secondaryDB *pgxpool.Pool, cfg *sqlcommon.Config) (*Da
 		}
 	}
 
+	primaryHealthDB, err := newHealthCheckPool(primaryDB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize postgres primary health check pool: %w", err)
+	}
+
+	var secondaryHealthDB *pgxpool.Pool
+	if secondaryDB != nil {
+		secondaryHealthDB, err = newHealthCheckPool(secondaryDB)
+		if err != nil {
+			primaryHealthDB.Close()
+			return nil, fmt.Errorf("initialize postgres secondary health check pool: %w", err)
+		}
+	}
+
 	return &Datastore{
 		primaryDB:                 primaryDB,
 		secondaryDB:               secondaryDB,
+		primaryHealthDB:           primaryHealthDB,
+		secondaryHealthDB:         secondaryHealthDB,
 		logger:                    cfg.Logger,
 		primaryDBStatsCollector:   primaryCollector,
 		secondaryDBStatsCollector: secondaryCollector,
@@ -309,11 +339,13 @@ func (s *Datastore) Close() {
 		prometheus.Unregister(s.primaryDBStatsCollector)
 	}
 	s.primaryDB.Close()
+	s.primaryHealthDB.Close()
 	if s.isSecondaryConfigured() {
 		if s.secondaryDBStatsCollector != nil {
 			prometheus.Unregister(s.secondaryDBStatsCollector)
 		}
 		s.secondaryDB.Close()
+		s.secondaryHealthDB.Close()
 	}
 }
 
@@ -1339,7 +1371,7 @@ func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	primaryStatus, err := isDBReady(ctx, s.versionReady, s.primaryDB)
+	primaryStatus, err := isDBReady(ctx, s.versionReady, s.primaryHealthDB)
 	if err != nil {
 		return primaryStatus, err
 	}
@@ -1354,7 +1386,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 		primaryStatus.Message = "ready"
 	}
 
-	secondaryStatus, err := isDBReady(ctx, s.versionReady, s.secondaryDB)
+	secondaryStatus, err := isDBReady(ctx, s.versionReady, s.secondaryHealthDB)
 	if err != nil {
 		secondaryStatus.Message = err.Error()
 		secondaryStatus.IsReady = false

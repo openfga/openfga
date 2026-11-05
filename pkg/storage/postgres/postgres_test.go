@@ -200,6 +200,52 @@ func TestPostgresDatastoreStatusWithSecondaryDB(t *testing.T) {
 	require.Equal(t, "primary: ready, secondary: ready", status.Message)
 }
 
+func TestPostgresDatastoreIsReadyWithSaturatedPools(t *testing.T) {
+	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	err := primaryDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = primaryDatastore.GetSecondaryConnectionURI(true)
+	cfg.MaxOpenConns = 1
+
+	ds, err := New(primaryDatastore.GetConnectionURI(true), cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	primaryConn, err := ds.primaryDB.Acquire(context.Background())
+	require.NoError(t, err)
+	defer primaryConn.Release()
+
+	secondaryConn, err := ds.secondaryDB.Acquire(context.Background())
+	require.NoError(t, err)
+	defer secondaryConn.Release()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	status, err := ds.IsReady(ctx)
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+}
+
+func TestPostgresDatastoreCloseClosesHealthCheckPools(t *testing.T) {
+	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	err := primaryDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = primaryDatastore.GetSecondaryConnectionURI(true)
+
+	ds, err := New(primaryDatastore.GetConnectionURI(true), cfg)
+	require.NoError(t, err)
+	ds.Close()
+
+	require.Error(t, ds.primaryHealthDB.Ping(context.Background()))
+	require.Error(t, ds.secondaryHealthDB.Ping(context.Background()))
+}
+
 func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
