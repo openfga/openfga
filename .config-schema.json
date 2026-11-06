@@ -917,6 +917,15 @@
                         "type": "string"
                     },
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS"
+                },
+                "validSigningAlgorithms": {
+                    "description": "the JWT signing algorithms (`alg` header) that will be accepted when verifying tokens. Supported values: RS256, RS384, RS512, PS256, PS384, PS512, ES256, ES384, ES512, EdDSA. Defaults to [`RS256`]",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA"]
+                    },
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_VALID_SIGNING_ALGORITHMS"
                 }
             },
             "required": ["issuer", "audience"]

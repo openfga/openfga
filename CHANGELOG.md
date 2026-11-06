@@ -9,6 +9,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Changed
 - Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
+### Added
+- Added `--authn-oidc-valid-signing-algorithms` (`OPENFGA_AUTHN_OIDC_VALID_SIGNING_ALGORITHMS`, `authn.oidc.validSigningAlgorithms`) to choose which JWT signing algorithms the OIDC authenticator accepts, so tokens signed with e.g. `ES256` can be used. Defaults to `RS256`, so existing setups are unchanged. [#1871](https://github.com/openfga/openfga/issues/1871)
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
