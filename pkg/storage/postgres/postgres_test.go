@@ -1103,6 +1103,19 @@ func TestFindLatestModel(t *testing.T) {
 		require.Len(t, latestModel.GetTypeDefinitions(), 2)
 		require.ElementsMatch(t, []string{"document", "user"},
 			[]string{latestModel.GetTypeDefinitions()[0].GetType(), latestModel.GetTypeDefinitions()[1].GetType()})
+
+		// The query must read only the latest model's rows, not the older versions.
+		stmt, args, err := findLatestAuthorizationModelQuery(store)
+		require.NoError(t, err)
+		rows, err := ds.primaryDB.Query(ctx, stmt, args...)
+		require.NoError(t, err)
+		defer rows.Close()
+		var n int
+		for rows.Next() {
+			n++
+		}
+		require.NoError(t, rows.Err())
+		require.Equal(t, 2, n)
 	})
 }
 
