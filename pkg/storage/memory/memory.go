@@ -667,28 +667,27 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 		return models[i].GetId() > models[j].GetId()
 	})
 
-	var from int
 	continuationToken := ""
-	var err error
 
 	pageSize := storage.DefaultPageSize
 	if options.Pagination.PageSize > 0 {
 		pageSize = options.Pagination.PageSize
 	}
 
-	if options.Pagination.From != "" {
-		from, err = strconv.Atoi(options.Pagination.From)
-		if err != nil {
-			return nil, "", err
-		}
+	// The continuation token is the id of the first model of the next page, so
+	// models written between page reads do not shift the pages.
+	if from := options.Pagination.From; from != "" {
+		start := sort.Search(len(models), func(i int) bool {
+			return models[i].GetId() <= from
+		})
+		models = models[start:]
 	}
 
-	from = max(0, min(from, len(models)))
-	to := min(len(models), from+pageSize)
-	res := models[from:to]
+	to := min(len(models), pageSize)
+	res := models[:to]
 
 	if to != len(models) {
-		continuationToken = strconv.Itoa(to)
+		continuationToken = models[to].GetId()
 	}
 
 	return res, continuationToken, nil

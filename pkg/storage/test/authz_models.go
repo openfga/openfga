@@ -108,6 +108,10 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 		}
 	})
 
+	t.Run("pagination_is_stable_when_models_are_written_between_pages", func(t *testing.T) {
+		readModelsPaginationStableTest(t, datastore)
+	})
+
 	t.Run("pagination_works", func(t *testing.T) {
 		t.Run("read_page_size_1_returns_everything", func(t *testing.T) {
 			seenModels := readModelsWithPageSize(t, datastore, store, 1)
@@ -137,6 +141,43 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 			}
 		})
 	})
+}
+
+func readModelsPaginationStableTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	writeModel := func() string {
+		model := &openfgav1.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgav1.TypeDefinition{{Type: "user"}},
+		}
+		require.NoError(t, datastore.WriteAuthorizationModel(ctx, store, model))
+		return model.GetId()
+	}
+
+	model1 := writeModel()
+	model2 := writeModel()
+
+	models, token, err := datastore.ReadAuthorizationModels(ctx, store, storage.ReadAuthorizationModelsOptions{
+		Pagination: storage.NewPaginationOptions(1, ""),
+	})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, model2, models[0].GetId())
+	require.NotEmpty(t, token)
+
+	// a model written between page reads must not shift the next page
+	writeModel()
+
+	models, token, err = datastore.ReadAuthorizationModels(ctx, store, storage.ReadAuthorizationModelsOptions{
+		Pagination: storage.NewPaginationOptions(1, token),
+	})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, model1, models[0].GetId())
+	require.Empty(t, token)
 }
 
 func readModelsWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID string, pageSize int) []*openfgav1.AuthorizationModel {
