@@ -148,7 +148,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects", "authzen"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects", "authzen", "inline_expressions"]
             },
             "default": ["pipeline_list_objects"],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -250,7 +250,7 @@
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
                 "secondaryUri": {
-                    "description": "The connection uri to use to connect to the secondary datastore (for postgres only).",
+                    "description": "The connection uri to use to connect to the secondary datastore (for postgres and mysql).",
                     "type": "string",
                     "examples": [
                         "postgres://user:pass@host:port/datastore?opts"
@@ -519,6 +519,13 @@
                             }
                         }
                     }
+                },
+                "sampler": {
+                    "description": "The sampler to use for tracing. Controls how sampling decisions are made. Defaults to 'traceidratio' for backward compatibility (note: the OpenTelemetry spec default is 'parentbased_always_on'). Unrecognized values produce a warning (when tracing is enabled) and fall back to 'traceidratio'.",
+                    "type": "string",
+                    "enum": ["always_on", "always_off", "traceidratio", "parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio"],
+                    "default": "traceidratio",
+                    "x-env-variable": ["OPENFGA_TRACE_SAMPLER", "OTEL_TRACES_SAMPLER"]
                 },
                 "sampleRatio": {
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",

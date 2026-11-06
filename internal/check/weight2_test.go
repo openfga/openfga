@@ -87,7 +87,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("group#all")
+		edges, ok := mg.GetEdgesFromNodeID("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -171,7 +171,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("group#all")
+		edges, ok := mg.GetEdgesFromNodeID("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -255,7 +255,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("group#all")
+		edges, ok := mg.GetEdgesFromNodeID("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -338,7 +338,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("group#all")
+		edges, ok := mg.GetEdgesFromNodeID("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -449,7 +449,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -541,7 +541,7 @@ func TestWeight2TTU(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -626,7 +626,7 @@ func TestWeight2TTU(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -711,7 +711,7 @@ func TestWeight2TTU(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -796,7 +796,7 @@ func TestWeight2TTU(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -907,7 +907,7 @@ func TestWeight2TTU(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -973,7 +973,7 @@ func TestWeight2ExecuteCancelledContextRace(t *testing.T) {
 	mg, err := modelgraph.New(model)
 	require.NoError(t, err)
 
-	edges, ok := mg.GetEdgesFromNodeId("group#all")
+	edges, ok := mg.GetEdgesFromNodeID("group#all")
 	require.True(t, ok)
 
 	iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{

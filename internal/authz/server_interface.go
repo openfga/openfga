@@ -1,5 +1,7 @@
 package authz
 
+//go:generate mockgen -source server_interface.go -destination ../mocks/mock_authz_server.go -package mocks
+
 import (
 	"context"
 

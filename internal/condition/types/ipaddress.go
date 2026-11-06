@@ -64,7 +64,8 @@ func ParseIPAddress(ip string) (IPAddress, error) {
 		return IPAddress{}, err
 	}
 
-	return IPAddress{addr}, nil
+	// Unmap so an IPv4-mapped IPv6 address matches an IPv4 CIDR.
+	return IPAddress{addr.Unmap()}, nil
 }
 
 // ipaddrCelType defines a CEL type for the IPAddress and registers it as a receiver type.
@@ -145,6 +146,13 @@ func ipaddressCELBinaryBinding(lhs, rhs ref.Val) ref.Val {
 	ipaddr, ok := lhs.(IPAddress)
 	if !ok {
 		return types.NewErr("an IPAddress parameter value is required for comparison")
+	}
+
+	// Unmap the CIDR too so an IPv4-mapped IPv6 CIDR matches the unmapped address.
+	addr := network.Addr().Unmap()
+	bits := network.Bits()
+	if addr.Is4() && bits >= 96 {
+		network = netip.PrefixFrom(addr, bits-96)
 	}
 
 	return types.Bool(network.Contains(ipaddr.addr))

@@ -43,7 +43,7 @@ func TestDefaultUserset(t *testing.T) {
 	mg, err := modelgraph.New(model)
 	require.NoError(t, err)
 
-	edges, ok := mg.GetEdgesFromNodeId("group#member")
+	edges, ok := mg.GetEdgesFromNodeID("group#member")
 	require.True(t, ok)
 
 	tests := []struct {
@@ -252,7 +252,7 @@ func TestDefaultTTU(t *testing.T) {
 	mg, err := modelgraph.New(model)
 	require.NoError(t, err)
 
-	edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+	edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 	require.True(t, ok)
 
 	// Find the TTU edge
@@ -461,7 +461,7 @@ func TestDefaultExecuteCancelledContextRace(t *testing.T) {
 	mg, err := modelgraph.New(model)
 	require.NoError(t, err)
 
-	edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+	edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 	require.True(t, ok)
 
 	var ttuEdge *authzGraph.WeightedAuthorizationModelEdge

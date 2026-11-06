@@ -2,7 +2,6 @@ package storagewrappers
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -59,7 +58,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 	require.Equal(t, model, gotModel)
 
 	// Check what's stored inside the cache.
-	modelKey := fmt.Sprintf("%s:%s", storeID, model.GetId())
+	modelKey := ModelCacheKey(storeID, model.GetId())
 	cachedModel := cachingBackend.cache.Get(modelKey)
 	require.NotNil(t, cachedModel)
 	require.Equal(t, model, cachedModel.AuthorizationModel)

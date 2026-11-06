@@ -2,48 +2,23 @@ package graph
 
 import (
 	"context"
-	"strconv"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/check/metrics"
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const (
 	defaultMaxCacheSize = 10000
 	defaultCacheTTL     = 10 * time.Second
-)
-
-var (
-	checkCacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "check_cache_total_count",
-		Help:      "The total number of calls to ResolveCheck with caching enabled (including any recursive calls).",
-	})
-
-	checkCacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "check_cache_hit_count",
-		Help:      "The total number of valid Check Query cache hits for ResolveCheck (including any recursive calls).",
-	})
-
-	checkCacheInvalidHit = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "check_cache_invalid_hit_count",
-		Help:      "The total number of Check Query cache hits for ResolveCheck (including any recursive calls) that were discarded because they were invalidated.",
-	})
 )
 
 var _ storage.CacheItem = (*CheckResponseCacheEntry)(nil)
@@ -164,12 +139,19 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey := BuildCacheKey(*req)
+	tk := req.GetTupleKey()
+	cacheKey := storage.CheckCacheKey(
+		req.GetStoreID(),
+		tk.GetObject(),
+		tk.GetRelation(),
+		tk.GetUser(),
+		req.GetInvariantCacheKey(),
+	)
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
 	if tryCache {
-		checkCacheTotalCounter.Inc()
+		metrics.CacheLookupCounter.Inc()
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)
 			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
@@ -181,13 +163,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 			span.SetAttributes(attribute.Bool("cached", isValid))
 			if isValid {
-				checkCacheHitCounter.Inc()
+				metrics.CacheHitCounter.Inc()
 				// return a copy to avoid races across goroutines
 				return res.CheckResponse.clone(), nil
 			}
 
 			// we tried the cache and hit an invalid entry
-			checkCacheInvalidHit.Inc()
+			metrics.CacheInvalidHitCounter.Inc()
 		} else {
 			c.logger.Debug("CachedCheckResolver not found cache key",
 				zap.String("store_id", req.GetStoreID()),
@@ -215,20 +197,12 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return resp, nil
 	}
 
+	if ctx.Err() != nil {
+		return resp, nil
+	}
+
 	clonedResp := resp.clone()
 
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, storage.JitteredTTL(c.cacheTTL, c.jitterPercentage))
 	return resp, nil
-}
-
-func BuildCacheKey(req ResolveCheckRequest) string {
-	tup := tuple.From(req.GetTupleKey())
-	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
-
-	hasher := xxhash.New()
-
-	// Digest.WriteString returns int and a nil error, ignoring
-	_, _ = hasher.WriteString(cacheKeyString)
-
-	return strconv.FormatUint(hasher.Sum64(), 10)
 }

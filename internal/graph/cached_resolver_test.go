@@ -13,6 +13,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -539,7 +540,7 @@ func TestResolveCheckExpired(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestResolveCheckLastChangelogRecent(t *testing.T) {
+func TestResolveCheckCacheBypassedWhenInvalidationTimeIsRecent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -612,7 +613,7 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
 }
 
-func TestBuildCacheKey(t *testing.T) {
+func TestCheckCacheKey_NonEmpty(t *testing.T) {
 	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
 		StoreID: "abc123",
 		TupleKey: &openfgav1.TupleKey{
@@ -624,6 +625,7 @@ func TestBuildCacheKey(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result := BuildCacheKey(*req)
+	tk := req.GetTupleKey()
+	result := storage.CheckCacheKey(req.GetStoreID(), tk.GetObject(), tk.GetRelation(), tk.GetUser(), req.GetInvariantCacheKey())
 	require.NotEmpty(t, result)
 }

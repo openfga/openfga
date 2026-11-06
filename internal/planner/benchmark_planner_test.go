@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 func BenchmarkPlanner_RecursiveScenario(b *testing.B) {
@@ -15,7 +17,9 @@ func BenchmarkPlanner_RecursiveScenario(b *testing.B) {
 		CleanupInterval:   1 * time.Hour,
 	})
 
-	key := "benchmark_key_recursive"
+	var kb keys.Builder
+	kb.EncodeString("benchmark_key_recursive")
+	key := kb.Key()
 	kp := p.GetPlanSelector(key)
 
 	// 2. Define the Strategies with your exact Priors

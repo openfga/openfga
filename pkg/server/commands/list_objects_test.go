@@ -14,6 +14,8 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -533,6 +535,47 @@ func TestListObjectsSeqError(t *testing.T) {
 		}, srv)
 		require.ErrorIs(t, err, errorRet)
 	})
+}
+
+func TestListObjectsPipelineConditionError(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with cond]
+		condition cond(x: int) {
+			x > 0
+		}`, nil)
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "cond", nil),
+	})
+	require.NoError(t, err)
+
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
+	t.Cleanup(checkResolverCloser)
+
+	q, err := NewListObjectsQuery(ds, checkResolver, storeID, WithListObjectsPipelineEnabled(true))
+	require.NoError(t, err)
+
+	_, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.GetId(),
+		Type:                 "document",
+		Relation:             "viewer",
+		User:                 "user:anne",
+	})
+	require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), status.Code(err))
+	require.ErrorContains(t, err, "is missing context parameters '[x]'")
 }
 
 func reportLatencies(b *testing.B, latencies []time.Duration) {

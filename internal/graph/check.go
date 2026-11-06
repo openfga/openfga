@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
@@ -24,6 +23,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -171,7 +171,7 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	for _, handler := range handlers {
 		h := handler
 		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			out <- runHandler(ctx, h)
 			return nil
 		})
 	}
@@ -191,9 +191,8 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 
 		case outcome, ok := <-out:
 			if !ok {
-				break
+				return nil, fmt.Errorf("%w: reducer outcome channel closed before all handlers reported", openfgaErrors.ErrUnknown)
 			}
-
 			if outcome.err != nil {
 				finalErr = outcome.err
 				continue // Continue to see if we find an 'Allowed: true'
@@ -237,7 +236,7 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 	for _, handler := range handlers {
 		h := handler // Capture loop variable for the goroutine
 		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			out <- runHandler(ctx, h)
 			return nil
 		})
 	}
@@ -259,9 +258,8 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 
 		case outcome, ok := <-out:
 			if !ok {
-				break
+				return nil, fmt.Errorf("%w: reducer outcome channel closed before all handlers reported", openfgaErrors.ErrUnknown)
 			}
-
 			if outcome.err != nil {
 				// Store the first error we see, but don't exit yet.
 				// A definitive 'false' result from another handler can override this.
@@ -633,6 +631,9 @@ func (c *LocalChecker) profiledCheckHandler(keyPlan planner.Selector, strategy *
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			// penalize plans that timeout from the upstream context
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -676,16 +677,15 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			defaultResolver: defaultPlan,
 		}
 
-		var b strings.Builder
-		b.WriteString("userset|")
-		b.WriteString(req.GetAuthorizationModelID())
-		b.WriteString("|")
-		b.WriteString(objectType)
-		b.WriteString("|")
-		b.WriteString(relation)
-		b.WriteString("|")
-		b.WriteString(userType)
-		b.WriteString("|")
+		builder := keys.GetBuilder()
+		defer builder.Close()
+
+		builder.EncodeString("USERSET")
+		builder.EncodeString(req.GetStoreID())
+		builder.EncodeString(req.GetAuthorizationModelID())
+		builder.EncodeString(objectType)
+		builder.EncodeString(relation)
+		builder.EncodeString(userType)
 
 		// if the type#relation is resolvable recursively, then it can only be resolved recursively
 		if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
@@ -709,8 +709,10 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			default: // in case is not selected
 			}
 
-			b.WriteString("infinite")
-			key := b.String()
+			builder.EncodeString("INFINITE")
+
+			key := builder.Key()
+
 			keyPlan := c.planner.GetPlanSelector(key)
 			plan := keyPlan.Select(possibleStrategies)
 
@@ -724,7 +726,11 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		var resolvers []CheckHandlerFunc
 
 		var remainingUsersetTypes []*openfgav1.RelationReference
-		keyPlanPrefix := b.String()
+
+		prefix := builder.Bytes()
+		keyPlanPrefix := make([]byte, len(prefix))
+		copy(keyPlanPrefix, prefix)
+
 		possibleStrategies[weightTwoResolver] = weight2Plan
 
 		// Check if a strategy was already selected by a parent call
@@ -755,11 +761,13 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				}
 			}
 
-			var k strings.Builder
-			k.WriteString(keyPlanPrefix)
-			k.WriteString("userset|")
-			k.WriteString(userset.String())
-			key := k.String()
+			builder.Reset()
+			builder.Write(keyPlanPrefix)
+			builder.EncodeString("USERSET")
+			builder.EncodeString(userset.String())
+
+			key := builder.Key()
+
 			keyPlan := c.planner.GetPlanSelector(key)
 			strategy := keyPlan.Select(possibleStrategies)
 
@@ -947,20 +955,20 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			// If the selected strategy is not in the possible strategies, fall through to planner
 		}
 
-		var b strings.Builder
-		b.WriteString("ttu|")
-		b.WriteString(req.GetAuthorizationModelID())
-		b.WriteString("|")
-		b.WriteString(objectType)
-		b.WriteString("|")
-		b.WriteString(relation)
-		b.WriteString("|")
-		b.WriteString(userType)
-		b.WriteString("|")
-		b.WriteString(tuplesetRelation)
-		b.WriteString("|")
-		b.WriteString(computedRelation)
-		planKey := b.String()
+		builder := keys.GetBuilder()
+		defer builder.Close()
+
+		builder.EncodeString("TTU")
+		builder.EncodeString(req.GetStoreID())
+		builder.EncodeString(req.GetAuthorizationModelID())
+		builder.EncodeString(objectType)
+		builder.EncodeString(relation)
+		builder.EncodeString(userType)
+		builder.EncodeString(tuplesetRelation)
+		builder.EncodeString(computedRelation)
+
+		planKey := builder.Key()
+
 		keyPlan := c.planner.GetPlanSelector(planKey)
 		strategy := keyPlan.Select(possibleStrategies)
 

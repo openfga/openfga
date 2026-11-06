@@ -11,6 +11,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	interrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -140,6 +141,40 @@ func TestFilter_Conditions(t *testing.T) {
 		tk, err := iter.Next(context.Background())
 		require.Equal(t, "unknown condition: condition5", err.Error())
 		require.Nil(t, tk)
+	})
+
+	t.Run("fatal_error_propagated_past_valid_entry", func(t *testing.T) {
+		fatalErr := errors.New("hard eval error")
+		fatalFilter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+			switch tupleKey.GetCondition().GetName() {
+			case "condition1":
+				return true, nil
+			default:
+				return false, &interrors.FatalError{Cause: fatalErr}
+			}
+		}
+
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition1", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition_fatal", nil),
+		}
+		iter := NewFilteredIterator(
+			storage.NewStaticTupleKeyIterator(tuples),
+			fatalFilter,
+		)
+		defer iter.Stop()
+
+		// First Next() returns the valid tuple.
+		tk, err := iter.Next(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, tuples[0], tk)
+
+		// Second Next() returns the FatalFilterError (wrapping fatalErr), not ErrIteratorDone.
+		_, err = iter.Next(context.Background())
+		require.ErrorIs(t, err, fatalErr) // unwraps through FatalFilterError
+		require.NotErrorIs(t, err, storage.ErrIteratorDone)
+		var fatal *interrors.FatalError
+		require.ErrorAs(t, err, &fatal)
 	})
 
 	t.Run("ctx_timeout", func(t *testing.T) {

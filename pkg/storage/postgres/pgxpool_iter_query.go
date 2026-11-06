@@ -7,13 +7,71 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
-// PgxQuery interface allows Query that returns pgx.Rows.
-type PgxQuery interface {
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+type pgxConnConnection pgxpool.Conn
+
+var _ sqlcommon.Connection = (*pgxConnConnection)(nil)
+
+func (c *pgxConnConnection) Query(ctx context.Context, sql string, args ...any) (sqlcommon.Rows, error) {
+	conn := (*pgxpool.Conn)(c)
+
+	rows, err := conn.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &pgxRowsWrapper{conn: conn, rows: rows}, nil
+}
+
+func (c *pgxConnConnection) Close() error {
+	conn := (*pgxpool.Conn)(c)
+	conn.Release()
+	return nil
+}
+
+type pgxTxConnection struct {
+	tx pgx.Tx
+}
+
+var _ sqlcommon.Connection = (*pgxTxConnection)(nil)
+
+func (c *pgxTxConnection) Query(ctx context.Context, sql string, args ...any) (sqlcommon.Rows, error) {
+	rows, err := c.tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &pgxRowsWrapper{rows: rows}, nil
+}
+
+func (c *pgxTxConnection) Close() error {
+	return nil
+}
+
+type pgxPoolConnector pgxpool.Pool
+
+var _ sqlcommon.Connector = (*pgxPoolConnector)(nil)
+
+func (c *pgxPoolConnector) Connect(ctx context.Context) (sqlcommon.Connection, error) {
+	pool := (*pgxpool.Pool)(c)
+
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return (*pgxConnConnection)(conn), nil
+}
+
+type pgxTxConnector struct {
+	tx pgx.Tx
+}
+
+var _ sqlcommon.Connector = (*pgxTxConnector)(nil)
+
+func (c *pgxTxConnector) Connect(ctx context.Context) (sqlcommon.Connection, error) {
+	return &pgxTxConnection{tx: c.tx}, nil
 }
 
 // PgxExec interface allows pgx Exec functionality.
@@ -21,47 +79,9 @@ type PgxExec interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (commandTag pgconn.CommandTag, err error)
 }
 
-// SQLBuilder represents any SQL statement builder that can generate
-// SQL strings with parameterized arguments.
-type SQLBuilder interface {
-	ToSql() (string, []interface{}, error)
-}
-
-// PgxTxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
-type PgxTxnIterQuery struct {
-	txn   PgxQuery
-	query string
-	args  []interface{}
-}
-
-var _ sqlcommon.SQLIteratorRowGetter = (*PgxTxnIterQuery)(nil)
-
-// NewPgxTxnGetRows creates a PgxTxnIterQuery which allows the GetRows functionality via the specified PgxQuery txn.
-func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
-	stmt, args, err := sb.ToSql()
-	if err != nil {
-		return nil, err
-	}
-	return &PgxTxnIterQuery{
-		txn:   txn,
-		query: stmt,
-		args:  args,
-	}, nil
-}
-
-// GetRows executes the txn query and returns the sqlcommon.Rows.
-// Raw driver errors are returned unchanged; error translation to storage-layer sentinels
-// is the responsibility of the caller (sqlcommon.SQLTupleIterator.fetchBuffer via handleSQLError).
-func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
-	rows, err := p.txn.Query(ctx, p.query, p.args...)
-	if err != nil {
-		return nil, err
-	}
-	return &pgxRowsWrapper{rows: rows}, nil
-}
-
 // pgxRowsWrapper wraps pgx.Rows to implement sqlcommon.Rows interface.
 type pgxRowsWrapper struct {
+	conn *pgxpool.Conn
 	rows pgx.Rows
 }
 
@@ -70,7 +90,14 @@ func (r *pgxRowsWrapper) Err() error {
 }
 
 func (r *pgxRowsWrapper) Next() bool {
-	return r.rows.Next()
+	if !r.rows.Next() {
+		if r.conn != nil {
+			r.conn.Release()
+			r.conn = nil
+		}
+		return false
+	}
+	return true
 }
 
 func (r *pgxRowsWrapper) Scan(dest ...any) error {
@@ -79,6 +106,10 @@ func (r *pgxRowsWrapper) Scan(dest ...any) error {
 
 func (r *pgxRowsWrapper) Close() error {
 	r.rows.Close()
+	if r.conn != nil {
+		r.conn.Release()
+		r.conn = nil
+	}
 	return nil
 }
 

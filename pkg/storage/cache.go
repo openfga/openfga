@@ -3,19 +3,13 @@
 package storage
 
 import (
-	"errors"
-	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/Yiling-J/theine-go"
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -23,7 +17,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -41,13 +35,18 @@ var (
 	}, []string{"entity", "reason"})
 )
 
+// Cache key namespace prefixes. Each prefix scopes a key to a particular
+// cache domain, preventing collisions between unrelated entry types.
 const (
-	SubproblemCachePrefix      = "sp."
-	iteratorCachePrefix        = "ic."
-	changelogCachePrefix       = "cc."
-	invalidIteratorCachePrefix = "iq."
-	defaultMaxCacheSize        = 10000
-	oneYear                    = time.Hour * 24 * 365
+	PrefixSubproblemCache      = "SP"
+	PrefixIteratorCache        = "IC"
+	PrefixChangelogCache       = "CC"
+	PrefixInvalidIteratorCache = "IQ"
+)
+
+const (
+	defaultMaxCacheSize = 10000
+	oneYear             = time.Hour * 24 * 365
 
 	removedLabel     = "removed"
 	evictedLabel     = "evicted"
@@ -62,10 +61,10 @@ type CacheItem interface {
 // InMemoryCache is a general purpose cache to store things in memory.
 type InMemoryCache[T any] interface {
 	// Get If the key exists, returns the value. If the key didn't exist, returns nil.
-	Get(key string) T
-	Set(key string, value T, ttl time.Duration)
+	Get(key keys.Key) T
+	Set(key keys.Key, value T, ttl time.Duration)
 
-	Delete(key string)
+	Delete(key keys.Key)
 
 	// Stop cleans resources.
 	Stop()
@@ -73,13 +72,13 @@ type InMemoryCache[T any] interface {
 
 type NoopCache struct{}
 
-func (n *NoopCache) Get(_ string) any {
+func (n *NoopCache) Get(_ keys.Key) any {
 	return nil
 }
 
-func (n *NoopCache) Set(_ string, _ any, _ time.Duration) {}
+func (n *NoopCache) Set(_ keys.Key, _ any, _ time.Duration) {}
 
-func (n *NoopCache) Delete(_ string) {}
+func (n *NoopCache) Delete(_ keys.Key) {}
 
 func (n *NoopCache) Stop() {}
 
@@ -90,7 +89,7 @@ func NewNoopCache() *NoopCache {
 // Specific implementation
 
 type InMemoryLRUCache[T any] struct {
-	client      *theine.Cache[string, T]
+	client      *theine.Cache[keys.Key, T]
 	maxElements int64
 	stopOnce    *sync.Once
 }
@@ -107,7 +106,7 @@ var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 
 func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCache[T], error) {
 	t := &InMemoryLRUCache[T]{
-		maxElements: defaultMaxCacheSize,
+		maxElements: int64(defaultMaxCacheSize),
 		stopOnce:    &sync.Once{},
 	}
 
@@ -115,8 +114,8 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCac
 		opt(t)
 	}
 
-	cacheBuilder := theine.NewBuilder[string, T](t.maxElements)
-	cacheBuilder.RemovalListener(func(key string, value T, reason theine.RemoveReason) {
+	cacheBuilder := theine.NewBuilder[keys.Key, T](t.maxElements)
+	cacheBuilder.RemovalListener(func(key keys.Key, value T, reason theine.RemoveReason) {
 		var (
 			reasonLabel string
 			entityLabel string
@@ -150,7 +149,7 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCac
 	return t, nil
 }
 
-func (i InMemoryLRUCache[T]) Get(key string) T {
+func (i InMemoryLRUCache[T]) Get(key keys.Key) T {
 	var zero T
 	item, ok := i.client.Get(key)
 	if !ok {
@@ -163,7 +162,7 @@ func (i InMemoryLRUCache[T]) Get(key string) T {
 // Set will store the value during the ttl.
 // Note that ttl is truncated to one year to avoid misinterpreted as negative value.
 // Negative ttl are noop.
-func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
+func (i InMemoryLRUCache[T]) Set(key keys.Key, value T, ttl time.Duration) {
 	if ttl >= oneYear {
 		ttl = oneYear
 	}
@@ -185,7 +184,7 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 	}
 }
 
-func (i InMemoryLRUCache[T]) Delete(key string) {
+func (i InMemoryLRUCache[T]) Delete(key keys.Key) {
 	i.client.Delete(key)
 }
 
@@ -210,8 +209,14 @@ func (c *ChangelogCacheEntry) CacheEntityType() string {
 	return "changelog"
 }
 
-func GetChangelogCacheKey(storeID string) string {
-	return changelogCachePrefix + storeID
+// ChangelogCacheKey returns the key under which a store's changelog metadata is cached.
+func ChangelogCacheKey(storeID string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString(PrefixChangelogCache)
+	builder.EncodeString(storeID)
+	return builder.Key()
 }
 
 type InvalidEntityCacheEntry struct {
@@ -222,39 +227,40 @@ func (i *InvalidEntityCacheEntry) CacheEntityType() string {
 	return "invalid_entity"
 }
 
-func GetInvalidIteratorCacheKey(storeID string) string {
-	return invalidIteratorCachePrefix + storeID
+// InvalidIteratorCacheKey returns the store-wide iterator invalidation key.
+func InvalidIteratorCacheKey(storeID string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString(PrefixInvalidIteratorCache)
+	builder.EncodeString(storeID)
+	return builder.Key()
 }
 
-func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
-	var builder CacheKeyBuilder
-	builder.Grow(5) // grown by the number of elements to be written to the builder
+// InvalidIteratorByObjectRelationCacheKey returns the invalidation key scoped to a specific object and relation.
+func InvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
 
-	builder.WriteString(invalidIteratorCachePrefix)
-	builder.WriteString("or")
-	builder.WriteString(storeID)
-	builder.WriteString(object)
-	builder.WriteString(relation)
-
-	return builder.Build()
+	builder.EncodeString(PrefixInvalidIteratorCache)
+	builder.EncodeString("OR")
+	builder.EncodeString(storeID)
+	builder.EncodeString(object)
+	builder.EncodeString(relation)
+	return builder.Key()
 }
 
-func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
-	result := make([]string, len(users))
+// InvalidIteratorByUserObjectTypeCacheKey returns the invalidation key scoped to a specific user and object type.
+func InvalidIteratorByUserObjectTypeCacheKey(storeID string, user string, objectType string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
 
-	for i, user := range users {
-		var builder CacheKeyBuilder
-		builder.Grow(5) // grown by the number of elements to be written to the builder
-
-		builder.WriteString(invalidIteratorCachePrefix)
-		builder.WriteString("otr")
-		builder.WriteString(storeID)
-		builder.WriteString(user)
-		builder.WriteString(objectType)
-
-		result[i] = builder.Build()
-	}
-	return result
+	builder.EncodeString(PrefixInvalidIteratorCache)
+	builder.EncodeString("UOT")
+	builder.EncodeString(storeID)
+	builder.EncodeString(user)
+	builder.EncodeString(objectType)
+	return builder.Key()
 }
 
 type TupleIteratorCacheEntry struct {
@@ -264,231 +270,6 @@ type TupleIteratorCacheEntry struct {
 
 func (t *TupleIteratorCacheEntry) CacheEntityType() string {
 	return "tuple_iterator"
-}
-
-func GetReadUsersetTuplesCacheKeyPrefix(builder *CacheKeyBuilder, store, object, relation string) {
-	builder.Grow(5) // grown by the number of elements to be written to the builder
-
-	builder.WriteString(iteratorCachePrefix)
-	builder.WriteString("rut")
-	builder.WriteString(store)
-	builder.WriteString(object)
-	builder.WriteString(relation)
-}
-
-func GetReadStartingWithUserCacheKeyPrefix(builder *CacheKeyBuilder, store, objectType, relation string) {
-	builder.Grow(5) // grown by the number of elements to be written to the builder
-
-	builder.WriteString(iteratorCachePrefix)
-	builder.WriteString("rtwu")
-	builder.WriteString(store)
-	builder.WriteString(objectType)
-	builder.WriteString(relation)
-}
-
-func GetReadCacheKey(builder *CacheKeyBuilder, store, tuple string) {
-	builder.Grow(4) // grown by the number of elements to be written to the builder
-
-	builder.WriteString(iteratorCachePrefix)
-	builder.WriteString("r")
-	builder.WriteString(store)
-	builder.WriteString(tuple)
-}
-
-// ErrUnexpectedStructValue is an error used to indicate that
-// an unexpected structpb.Value kind was encountered.
-var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered")
-
-// validateNoForbiddenChars returns an error if s contains characters OpenFGA doesn't allow.
-// These characters should be rejected at validation boundaries before reaching
-// cache key generation. If this errors, it indicates a validation bug upstream.
-func validateNoForbiddenChars(s string) error {
-	if utils.ContainsForbiddenChars(s) {
-		return fmt.Errorf("invariant violation: forbidden character in cache key input")
-	}
-	return nil
-}
-
-// writeValue writes value v to the writer w. An error
-// is returned only when the underlying writer returns
-// an error or an unexpected value kind is encountered.
-func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
-	switch val := v.GetKind().(type) {
-	case *structpb.Value_BoolValue:
-		_, err = w.WriteString(strconv.FormatBool(val.BoolValue))
-	case *structpb.Value_NullValue:
-		_, err = w.WriteString("null")
-	case *structpb.Value_StringValue:
-		if err = validateNoForbiddenChars(val.StringValue); err != nil {
-			return
-		}
-
-		numBytes := len(val.StringValue)
-		_, err = w.WriteString(strconv.Itoa(numBytes) + ":")
-		if err != nil {
-			return
-		}
-
-		_, err = w.WriteString(val.StringValue)
-		if err != nil {
-			return
-		}
-	case *structpb.Value_NumberValue:
-		_, err = w.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
-	case *structpb.Value_ListValue:
-		values := val.ListValue.GetValues()
-
-		for n, vv := range values {
-			if err = writeValue(w, vv); err != nil {
-				return
-			}
-
-			if n < len(values)-1 {
-				if _, err = w.WriteString(","); err != nil {
-					return
-				}
-			}
-		}
-	case *structpb.Value_StructValue:
-		err = writeStruct(w, val.StructValue)
-	default:
-		err = ErrUnexpectedStructValue
-	}
-	return
-}
-
-// keys accepts a map m and returns a slice of its keys.
-// When this project is updated to Go version 1.23 or greater,
-// `maps.Keys` should be preferred.
-func keys[T comparable, U any](m map[T]U) []T {
-	n := make([]T, len(m))
-	var i int
-	for k := range m {
-		n[i] = k
-		i++
-	}
-	return n
-}
-
-// writeStruct writes Struct value s to writer w. When s is nil, a
-// nil error is returned. An error is returned only when the underlying
-// writer returns an error. The struct fields are written in the sorted
-// order of their names. A comma separates fields.
-func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
-	if s == nil {
-		return
-	}
-
-	fields := s.GetFields()
-	keys := keys(fields)
-	sort.Strings(keys)
-
-	// encode the length of the keys to ensure the correct number of keys are reflected
-	// e.g. "a": "x,'b:'y"
-	if _, err = w.WriteString(strconv.Itoa(len(keys))); err != nil {
-		return
-	}
-
-	for _, key := range keys {
-		if err = validateNoForbiddenChars(key); err != nil {
-			return
-		}
-		if _, err = w.WriteString("'"); err != nil {
-			return
-		}
-		if _, err = w.WriteString(key); err != nil {
-			return
-		}
-		// 'key:'value separator and quote
-		if _, err = w.WriteString(":'"); err != nil {
-			return
-		}
-
-		if err = writeValue(w, fields[key]); err != nil {
-			return
-		}
-
-		if _, err = w.WriteString(","); err != nil {
-			return
-		}
-	}
-	return
-}
-
-// writeTuples writes the set of tuples to writer w in ascending sorted order.
-// The intention of this function is to write the tuples as a unique string.
-// Tuples are separated by commas, and when present, conditions are included
-// in the tuple string representation. Returns an error only when
-// the underlying writer returns an error.
-func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
-	sortedTuples := make(tuple.TupleKeys, len(tuples))
-
-	// copy tuples slice to avoid mutating the original slice during sorting.
-	copy(sortedTuples, tuples)
-
-	// sort tuples for a deterministic write
-	sort.Sort(sortedTuples)
-
-	// prefix to avoid overlap with previous strings written
-	_, err = w.WriteString("/")
-	if err != nil {
-		return
-	}
-
-	for n, tupleKey := range sortedTuples {
-		objectRelation := tupleKey.GetObject() + "#" + tupleKey.GetRelation()
-		if err = validateNoForbiddenChars(objectRelation); err != nil {
-			return
-		}
-		_, err = w.WriteString(objectRelation)
-		if err != nil {
-			return
-		}
-
-		cond := tupleKey.GetCondition()
-		if cond != nil {
-			// " with " is separated by spaces as those are invalid in relation names
-			// and we need to ensure this cache key is unique
-			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
-			condName := cond.GetName()
-			if err = validateNoForbiddenChars(condName); err != nil {
-				return
-			}
-			_, err = w.WriteString(" with " + condName)
-			if err != nil {
-				return
-			}
-
-			// if the condition also has context, we need an additional separator
-			// which cannot be present in condition names
-			if cond.GetContext() != nil {
-				_, err = w.WriteString(" ")
-				if err != nil {
-					return
-				}
-			}
-
-			// now write context to hash. Is a noop if context is nil.
-			if err = writeStruct(w, cond.GetContext()); err != nil {
-				return
-			}
-		}
-
-		user := tupleKey.GetUser()
-		if err = validateNoForbiddenChars(user); err != nil {
-			return
-		}
-		if _, err = w.WriteString("@" + user); err != nil {
-			return
-		}
-
-		if n < len(tuples)-1 {
-			if _, err = w.WriteString(","); err != nil {
-				return
-			}
-		}
-	}
-	return
 }
 
 // JitteredTTL returns a TTL with random jitter added. The jitter is a random duration
@@ -521,139 +302,55 @@ func JitteredTTL(baseTTL time.Duration, jitterPercentage uint32) time.Duration {
 	return baseTTL + jitter
 }
 
-// CheckCacheKeyParams is all the necessary pieces to create a unique-per-check cache key.
-type CheckCacheKeyParams struct {
-	StoreID              string
-	AuthorizationModelID string
-	TupleKey             *openfgav1.TupleKey
-	ContextualTuples     []*openfgav1.TupleKey
-	Context              *structpb.Struct
-}
-
-// WriteCheckCacheKey converts the elements of a Check into a canonical cache key that can be
-// used for Check resolution cache key lookups in a stable way, and writes it to the provided writer.
+// CheckCacheKey builds the canonical per-Check subproblem cache key.
+// The trailing invariant uint64 already encodes storeID (see InvariantCacheKey)
+// so cache entries for distinct stores can never collide here even if the same
+// model ID were ever observed across stores.
 //
-// For one store and model ID, the same tuple provided with the same contextual tuples and context
-// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
-// only the contents are compared.
-func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
-	t := tuple.From(params.TupleKey)
+// Tuple component order and context key order do not affect the invariant
+// hash — equivalent requests produce identical keys.
+func CheckCacheKey(storeID, object, relation, user string, invariant uint64) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
 
-	tupleStr := t.String()
-	if err := validateNoForbiddenChars(tupleStr); err != nil {
-		return err
-	}
-	_, err := w.WriteString(tupleStr)
-	if err != nil {
-		return err
-	}
-
-	err = WriteInvariantCheckCacheKey(w, params)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	builder.EncodeString(PrefixSubproblemCache)
+	builder.EncodeString(storeID)
+	builder.EncodeString(object)
+	builder.EncodeString(relation)
+	builder.EncodeString(user)
+	builder.EncodeUint64(invariant)
+	return builder.Key()
 }
 
-func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
-	_, err := w.WriteString(params.AuthorizationModelID)
-	if err != nil {
-		return err
+// InvariantCacheKey hashes the per-request parts of a Check that don't change
+// in sub-problems: storeID, modelID, context, and contextual tuples. StoreID
+// is part of the hash so the invariant carries store identity transitively to
+// every key that embeds it (CheckCacheKey, WriteEdgeCacheKey). This is defense
+// in depth: ULIDs are globally unique today, but cache correctness should not
+// depend on that property holding across DB restores, environment imports, or
+// future ID-generation changes.
+func InvariantCacheKey(storeID, modelID string, ctx *structpb.Struct, contextualTuples ...*openfgav1.TupleKey) uint64 {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString(storeID)
+	builder.EncodeString(modelID)
+
+	sortedTuples := make(tuple.TupleKeys, len(contextualTuples))
+	copy(sortedTuples, contextualTuples)
+	sort.Sort(sortedTuples)
+
+	ts := make([]keys.Serializable, len(sortedTuples))
+	for i, t := range sortedTuples {
+		ts[i] = (*keys.Tuple)(t)
 	}
+	builder.EncodeArray(ts)
 
-	// here, and for context below, avoid hashing if we don't need to
-	if len(params.ContextualTuples) > 0 {
-		if err = writeTuples(w, params.ContextualTuples...); err != nil {
-			return err
-		}
-	}
+	value := (*keys.PbValue)(structpb.NewStructValue(ctx))
+	builder.Serialize(value)
 
-	if params.Context != nil {
-		if err = writeStruct(w, params.Context); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-const hextable string = "0123456789ABCDEF"
-
-type CacheKeyBuilder struct {
-	buf [][]byte
-}
-
-func (b *CacheKeyBuilder) Grow(n int) {
-	if cap(b.buf) < n {
-		buf := make([][]byte, len(b.buf), n)
-		copy(buf, b.buf)
-		b.buf = buf
-	}
-}
-
-func (b *CacheKeyBuilder) Write(val []byte) (int, error) {
-	b.buf = append(b.buf, val)
-	return len(val), nil
-}
-
-func (b *CacheKeyBuilder) WriteString(val string) (int, error) {
-	return b.Write(unsafe.Slice(unsafe.StringData(val), len(val)))
-}
-
-// Build hex-encodes each written value and separates them with '|'.
-// The output alphabet is [0-9A-F|], which makes it injection-proof: no crafted
-// input can produce a '|', so segments can never collide across boundaries.
-// Tradeoff: keys are 2x larger than raw concatenation, increasing cache memory usage.
-func (b *CacheKeyBuilder) Build() string {
-	var count int
-	for _, buf := range b.buf {
-		count += len(buf)*2 + 1
-	}
-	hex := make([]byte, count)
-	var j int
-	for _, buf := range b.buf {
-		for i := range len(buf) {
-			hex[j] = hextable[buf[i]>>4]
-			j++
-			hex[j] = hextable[buf[i]&0x0F]
-			j++
-		}
-		hex[j] = '|'
-		j++
-	}
-	// unsafe.String: safe because hex is a local buffer never mutated after this point.
-	return unsafe.String(unsafe.SliceData(hex), len(hex))
-}
-
-// BuildUserTypeRestrictionsHash creates a deterministic xxhash digest from user type restrictions.
-// Each restriction is formatted as "type", "type:*", or "type#relation", then sorted and
-// hashed with null-byte separators. Returns the hash as a []byte.
-func BuildUserTypeRestrictionsHash(refs []*openfgav1.RelationReference) []byte {
-	if len(refs) == 0 {
-		return []byte{}
-	}
-
-	parts := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		var part string
-		switch r := ref.GetRelationOrWildcard().(type) {
-		case *openfgav1.RelationReference_Relation:
-			part = ref.GetType() + "#" + r.Relation
-		case *openfgav1.RelationReference_Wildcard:
-			part = ref.GetType() + ":*"
-		default:
-			part = ref.GetType()
-		}
-		parts = append(parts, part)
-	}
-
-	sort.Strings(parts)
-
-	var hasher xxhash.Digest
-	for _, part := range parts {
-		hasher.WriteString(part)
-		hasher.Write([]byte{0})
-	}
-	return hasher.Sum([]byte{})
+	digest := keys.GetDigest()
+	defer digest.Close()
+	digest.Write(builder.Bytes())
+	return digest.Sum64()
 }

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	sq "github.com/Masterminds/squirrel"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -15,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
 type errorHandlerFn func(error, ...interface{}) error
@@ -22,8 +22,8 @@ type errorHandlerFn func(error, ...interface{}) error
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
 // interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
-	rows           *sql.Rows // GUARDED_BY(mu)
-	sb             sq.SelectBuilder
+	rows           sqlcommon.Rows // GUARDED_BY(mu)
+	rowGetter      sqlcommon.SQLIteratorRowGetter
 	handleSQLError errorHandlerFn
 	// firstRow is used as a temporary storage place if head is called.
 	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
@@ -37,9 +37,9 @@ type SQLTupleIterator struct {
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTupleIterator {
+func NewSQLTupleIterator(rowGetter sqlcommon.SQLIteratorRowGetter, errHandler errorHandlerFn) *SQLTupleIterator {
 	return &SQLTupleIterator{
-		sb:             sb,
+		rowGetter:      rowGetter,
 		rows:           nil,
 		handleSQLError: errHandler,
 		firstRow:       nil,
@@ -50,9 +50,8 @@ func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTup
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlite.fetchBuffer", trace.WithAttributes())
 	defer span.End()
-	ctx = context.WithoutCancel(ctx)
 	start := time.Now()
-	rows, err := t.sb.QueryContext(ctx)
+	rows, err := t.rowGetter.GetRows(ctx)
 	elapsed := time.Since(start)
 	if err != nil {
 		storageErr := t.handleSQLError(err)

@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 // Planner is the top-level entry point for creating and managing plans for different keys.
@@ -59,7 +61,7 @@ func NewNoopPlanner() *Planner {
 }
 
 // GetPlanSelector retrieves the plan for a specific key, creating it if it doesn't exist.
-func (p *Planner) GetPlanSelector(key string) Selector {
+func (p *Planner) GetPlanSelector(key keys.Key) Selector {
 	upsertPlan := &keyPlan{planner: p}
 	upsertPlan.touch()
 	kp, loaded := p.keys.LoadOrStore(key, upsertPlan)

@@ -63,7 +63,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -115,9 +115,9 @@ func TestBottomUpSpecificType(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
-		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		edges, ok = mg.GetEdgesFromNodeID(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
@@ -170,11 +170,11 @@ func TestBottomUpSpecificType(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
-		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		edges, ok = mg.GetEdgesFromNodeID(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		edges, ok = mg.GetEdgesFromNodeID(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
@@ -233,7 +233,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
@@ -286,7 +286,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
@@ -341,7 +341,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -393,9 +393,9 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
-		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		edges, ok = mg.GetEdgesFromNodeID(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -447,11 +447,11 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
-		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		edges, ok = mg.GetEdgesFromNodeID(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		edges, ok = mg.GetEdgesFromNodeID(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -509,7 +509,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
@@ -562,7 +562,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
-		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		edges, ok := mg.GetEdgesFromNodeID("document#member")
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,

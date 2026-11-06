@@ -1,5 +1,7 @@
 package storage
 
+//go:generate mockgen -source tuple_iterators.go -destination ../../internal/mocks/mock_iterator.go -package mocks
+
 import (
 	"context"
 	"errors"
@@ -8,6 +10,8 @@ import (
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	interrors "github.com/openfga/openfga/internal/errors"
 )
 
 var ErrIteratorDone = errors.New("iterator done")
@@ -358,6 +362,10 @@ func (f *ConditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfga
 
 		valid, err := f.filter(tuple)
 		if err != nil {
+			var fatal *interrors.FatalError
+			if errors.As(err, &fatal) {
+				return nil, err // propagate immediately; keep wrapper intact
+			}
 			f.lastError = err
 			continue
 		}
@@ -397,6 +405,10 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 		valid, err := f.filter(tuple)
 		if err != nil || !valid {
 			if err != nil {
+				var fatal *interrors.FatalError
+				if errors.As(err, &fatal) {
+					return nil, err // propagate immediately; keep wrapper intact
+				}
 				f.lastError = err
 			}
 			// Note that we don't care about the item returned by Next() as this is already via Head(). We call Next() solely
@@ -429,6 +441,7 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 	}
 }
 
+// OrderedCombinedIterator merges ordered iterators. Whether equal values are dropped depends on the constructor.
 type OrderedCombinedIterator struct {
 	mu          *sync.Mutex
 	once        *sync.Once
@@ -437,6 +450,7 @@ type OrderedCombinedIterator struct {
 	lastHead    *openfgav1.Tuple // GUARDED_BY(mu)
 	lastYielded *openfgav1.Tuple // GUARDED_BY(mu)
 	ordered     bool
+	dedupe      bool
 }
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
@@ -445,6 +459,16 @@ var _ TupleIterator = (*OrderedCombinedIterator)(nil)
 // All the input iterators must be individually ordered already according to mapper.
 // Iterators can yield the same value (as defined by mapper) multiple times, but it will only be returned once.
 func NewOrderedCombinedIterator(mapper TupleMapperFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
+	return newOrderedIterator(true, mapper, sortedIters...)
+}
+
+// NewOrderedMergeIterator is like NewOrderedCombinedIterator but keeps tuples that map to the same value, so callers can
+// filter (e.g. by condition) before deduplicating. Ties go to the lowest index.
+func NewOrderedMergeIterator(mapper TupleMapperFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
+	return newOrderedIterator(false, mapper, sortedIters...)
+}
+
+func newOrderedIterator(dedupe bool, mapper TupleMapperFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
 	pending := make([]TupleIterator, 0, len(sortedIters))
 	ordered := true
 	for _, sortedIter := range sortedIters {
@@ -455,7 +479,7 @@ func NewOrderedCombinedIterator(mapper TupleMapperFunc, sortedIters ...TupleIter
 			}
 		}
 	}
-	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, mapper: mapper, ordered: ordered}
+	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, mapper: mapper, ordered: ordered, dedupe: dedupe}
 }
 
 func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -521,7 +545,7 @@ IterateOverPending:
 			// We do this based on the previous Head() returned for performance reasons.
 			// If on every call to Head() we discarded, we would need to iterate twice over pending:
 			// one time to find the minIdx, and one time to move the corresponding iterators.
-			for c.mapper(head) == c.mapper(c.lastYielded) {
+			for c.dedupe && c.mapper(head) == c.mapper(c.lastYielded) {
 				// We want to advance to the new tuple. However, notice the "Next"'s returned
 				// tuple is still "old".  Therefore, we will need to load it with "Head" in the
 				// next step.
@@ -577,6 +601,56 @@ func (c *OrderedCombinedIterator) Stop() {
 // IsOrdered returns true only if all source iterators are ordered; the merge-sort algorithm
 // produces sorted output only when every input is individually sorted.
 func (c *OrderedCombinedIterator) IsOrdered() bool { return c.ordered }
+
+type keptTupleIterator struct {
+	iter TupleIterator
+	keep func(*openfgav1.Tuple) bool
+	once sync.Once
+}
+
+var _ TupleIterator = (*keptTupleIterator)(nil)
+
+// Next see [Iterator.Next].
+func (k *keptTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	for {
+		t, err := k.iter.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if k.keep(t) {
+			return t, nil
+		}
+	}
+}
+
+// Head see [Iterator.Head]. It advances past dropped tuples.
+func (k *keptTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	for {
+		t, err := k.iter.Head(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if k.keep(t) {
+			return t, nil
+		}
+		if _, err := k.iter.Next(ctx); err != nil {
+			return nil, err
+		}
+	}
+}
+
+// Stop see [Iterator.Stop].
+func (k *keptTupleIterator) Stop() {
+	k.once.Do(k.iter.Stop)
+}
+
+// IsOrdered forwards from the inner iterator.
+func (k *keptTupleIterator) IsOrdered() bool { return k.iter.IsOrdered() }
+
+// NewKeepTupleIterator yields only tuples for which keep is true. It works on tuples so conditions survive, unlike NewFilteredTupleKeyIterator.
+func NewKeepTupleIterator(iter TupleIterator, keep func(*openfgav1.Tuple) bool) TupleIterator {
+	return &keptTupleIterator{iter: iter, keep: keep}
+}
 
 // IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
 func IterIsDoneOrCancelled(err error) bool {

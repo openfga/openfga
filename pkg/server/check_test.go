@@ -19,13 +19,18 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
+
+const logMessage = "potential v2 Check resolution breaking change"
 
 func TestCheck_Validation(t *testing.T) {
 	t.Parallel()
@@ -344,34 +349,49 @@ func fieldMap(fields []zap.Field) map[string]interface{} {
 // so tests can assert which cache received entries.
 type recordingCache struct {
 	mu      sync.Mutex
-	entries map[string]any
+	entries map[keys.Key]any
 	getKeys []string
 	setKeys []string
 	delKeys []string
 }
 
-func newRecordingCache() *recordingCache {
-	return &recordingCache{entries: make(map[string]any)}
+// subproblemCachePrefix is the hex-encoded TLV prefix every per-edge subproblem
+// cache key starts with. ModelGraphCachePrefix is the equivalent for entries
+// the authorization-model-graph resolver writes. Tests use them to partition
+// recorded cache keys by what they cache.
+var (
+	subproblemCachePrefix = tlvHexPrefix(check.PrefixEdgeCacheKey)
+	modelGraphCachePrefix = tlvHexPrefix(modelgraph.CacheKeyPrefix)
+)
+
+func tlvHexPrefix(s string) string {
+	var b keys.Builder
+	b.EncodeString(s)
+	return b.Key().String()
 }
 
-func (c *recordingCache) Get(key string) any {
+func newRecordingCache() *recordingCache {
+	return &recordingCache{entries: make(map[keys.Key]any)}
+}
+
+func (c *recordingCache) Get(key keys.Key) any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.getKeys = append(c.getKeys, key)
+	c.getKeys = append(c.getKeys, key.String())
 	return c.entries[key]
 }
 
-func (c *recordingCache) Set(key string, value any, _ time.Duration) {
+func (c *recordingCache) Set(key keys.Key, value any, _ time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setKeys = append(c.setKeys, key)
+	c.setKeys = append(c.setKeys, key.String())
 	c.entries[key] = value
 }
 
-func (c *recordingCache) Delete(key string) {
+func (c *recordingCache) Delete(key keys.Key) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.delKeys = append(c.delKeys, key)
+	c.delKeys = append(c.delKeys, key.String())
 	delete(c.entries, key)
 }
 
@@ -380,25 +400,25 @@ func (c *recordingCache) Stop() {}
 func (c *recordingCache) getKeysWithPrefix(prefix string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var keys []string
+	var result []string
 	for _, k := range c.getKeys {
 		if strings.HasPrefix(k, prefix) {
-			keys = append(keys, k)
+			result = append(result, k)
 		}
 	}
-	return keys
+	return result
 }
 
 func (c *recordingCache) setKeysWithPrefix(prefix string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var keys []string
+	var result []string
 	for _, k := range c.setKeys {
 		if strings.HasPrefix(k, prefix) {
-			keys = append(keys, k)
+			result = append(result, k)
 		}
 	}
-	return keys
+	return result
 }
 
 func (c *recordingCache) resetTracking() {
@@ -443,7 +463,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.ShadowCheckCache,
 			s.sharedDatastoreResources.ShadowCacheController,
 			s.shadowAuthzModelGraphResolver,
@@ -451,12 +471,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Shadow mode should route model graph and subproblem entries to the shadow cache.
-		require.NotEmpty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should have model graph entries")
-		require.NotEmpty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should have subproblem cache entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix(modelGraphCachePrefix), "shadow cache should have model graph entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix(subproblemCachePrefix), "shadow cache should have subproblem cache entries")
 
 		// Main cache should remain empty.
-		require.Empty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should not have model graph entries")
-		require.Empty(t, checkCache.setKeysWithPrefix("c."), "main check cache should not have subproblem cache entries")
+		require.Empty(t, checkCache.setKeysWithPrefix(modelGraphCachePrefix), "main check cache should not have model graph entries")
+		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "main check cache should not have subproblem cache entries")
 	})
 
 	t.Run("non_shadow_mode_uses_main_cache", func(t *testing.T) {
@@ -469,7 +489,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -477,12 +497,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Non-shadow mode should route model graph and subproblem entries to the main cache.
-		require.NotEmpty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should have model graph entries")
-		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "main check cache should have subproblem cache entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix(modelGraphCachePrefix), "main check cache should have model graph entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "main check cache should have subproblem cache entries")
 
 		// Shadow cache should remain empty.
-		require.Empty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should not have model graph entries")
-		require.Empty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should not have subproblem cache entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix(modelGraphCachePrefix), "shadow cache should not have model graph entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix(subproblemCachePrefix), "shadow cache should not have subproblem cache entries")
 	})
 
 	t.Run("cache_controller_instances_are_separate", func(t *testing.T) {
@@ -639,7 +659,7 @@ func TestV2Check_SanitizeRequest(t *testing.T) {
 
 	doV2Check := func(t *testing.T, req *openfgav1.CheckRequest) error {
 		t.Helper()
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -742,30 +762,30 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, _, err := s.v2Check(ctx, req,
+		res, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
-		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "cache should have subproblem entries written when query cache is enabled")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have subproblem entries written when query cache is enabled")
 
 		// Reset tracking so the second call's Get activity is isolated.
 		checkCache.resetTracking()
 
 		// Call v2Check again with the same request to verify cached entries are retrieved.
-		res, _, err = s.v2Check(ctx, req,
+		res, err = s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
-		require.NotEmpty(t, checkCache.getKeysWithPrefix("c."),
+		require.True(t, res.Allowed)
+		require.NotEmpty(t, checkCache.getKeysWithPrefix(subproblemCachePrefix),
 			"second check should read subproblem entries from cache")
-		require.Empty(t, checkCache.setKeysWithPrefix("c."),
+		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix),
 			"second check should not write new subproblem entries (cache should be hit)")
 	})
 
@@ -781,15 +801,15 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, _, err := s.v2Check(ctx, req,
+		res, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
-		require.Empty(t, checkCache.setKeysWithPrefix("c."), "cache should have no subproblem entries when query cache is disabled")
+		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have no subproblem entries when query cache is disabled")
 	})
 }
 
@@ -833,4 +853,440 @@ func TestCheck_FallsBackToV1WhenWeightedGraphInvalid(t *testing.T) {
 	require.True(t, ok, "dispatch_count should be set, confirming v1 metrics path ran")
 	_, ok = tags[datastoreQueryCountHistogramName]
 	require.True(t, ok, "datastore_query_count should be set")
+}
+
+func TestCheck_DoesNotFallBackOnInvalidContextualTuple(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// A contextual tuple with a relation that doesn't exist on the model is rejected by v2's
+	// request-validation step. v1 would reject it identically, so we must not fall back.
+	s, baseReq := setupCheckServer(t, "", nil,
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+
+	req := &openfgav1.CheckRequest{
+		StoreId:              baseReq.GetStoreId(),
+		AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+		TupleKey:             baseReq.GetTupleKey(),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "no_such_relation", "user:bob"),
+			},
+		},
+	}
+
+	ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
+	_, err := s.Check(ctx, req)
+	require.Error(t, err)
+
+	tags := grpc_ctxtags.Extract(ctx).Values()
+	// v2 metrics must be present; v1 dispatch_count must be absent (no fallback).
+	_, ok := tags[datastoreQueryCountHistogramName]
+	require.True(t, ok, "datastore_query_count should be set on v2 terminal error")
+	_, ok = tags[dispatchCountHistogramName]
+	require.False(t, ok, "dispatch_count must not be set — invalid contextual tuple must not fall back to v1")
+}
+
+func TestBreakingChangeReason(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name      string
+		modelDSL  string
+		seedTuple *openfgav1.TupleKey
+		object    string
+		relation  string
+		user      string
+	}{
+		{
+			name: "alias_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define reader: [user]
+						define allowed: reader
+						define viewer: [user, document#allowed]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "reader", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d3#reader",
+		},
+		{
+			name: "self_referential_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d1#viewer",
+		},
+		{
+			name: "computed_userset_self_object",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define viewer: editor or writer
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "editor", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d1#writer",
+		},
+		{
+			name: "ttu_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "parent", "folder:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "folder:f2#viewer",
+		},
+		{
+			name: "no_match_direct_userset_assignable",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [user, group#member]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "group:g1#member",
+		},
+		{
+			// User is a plain object (no #relation), so none of the userset-shape
+			// reasons should fire. Mirrors the IsObjectRelation gate at the caller.
+			name: "no_match_user_is_not_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "user:bob",
+		},
+		{
+			// computed_userset shape exists in the rewrite, but the user's object
+			// differs from the target object — so computed_userset_self_object must NOT fire.
+			name: "no_match_computed_userset_different_object",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define viewer: editor or writer
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "editor", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d2#writer",
+		},
+		{
+			// TTU shape exists (viewer from parent) and the computed relation matches
+			// the user's relation, but the user's object type (user) is not in the
+			// tupleset's directly-related types (parent: [folder]) — so ttu_userset must NOT fire.
+			name: "no_match_ttu_user_object_type_not_in_tupleset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+					relations
+						define viewer: [user]
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "parent", "folder:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "user:u1#viewer",
+		},
+		{
+			// self_referential_userset is an exact (object, relation) match shape.
+			// User's object differs from target's object, so it must NOT fire.
+			name: "no_match_self_referential_different_object",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d2#viewer",
+		},
+		{
+			// Same object as target, but user's relation is not a ComputedUserset leaf
+			// in the rewrite. computed_userset_self_object must NOT fire.
+			name: "no_match_computed_userset_relation_not_in_rewrite",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define other: [user]
+						define viewer: editor or writer
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "editor", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d1#other",
+		},
+		{
+			// TTU exists (viewer from parent) but the user's relation does not match
+			// the TTU's computed relation. ttu_userset must NOT fire.
+			name: "no_match_ttu_user_relation_mismatch",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+						define editor: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "parent", "folder:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "folder:f2#editor",
+		},
+	}
+
+	negativeCases := map[string]bool{
+		"no_match_direct_userset_assignable":                true,
+		"no_match_user_is_not_userset":                      true,
+		"no_match_computed_userset_different_object":        true,
+		"no_match_ttu_user_object_type_not_in_tupleset":     true,
+		"no_match_self_referential_different_object":        true,
+		"no_match_computed_userset_relation_not_in_rewrite": true,
+		"no_match_ttu_user_relation_mismatch":               true,
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, baseReq := setupCheckServer(t, tc.modelDSL, []*openfgav1.TupleKey{tc.seedTuple})
+
+			req := &openfgav1.CheckRequest{
+				StoreId:              baseReq.GetStoreId(),
+				AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   tc.object,
+					Relation: tc.relation,
+					User:     tc.user,
+				},
+			}
+
+			typesys, err := s.resolveTypesystem(context.Background(), baseReq.GetStoreId(), req.GetAuthorizationModelId())
+			require.NoError(t, err)
+			tk := req.GetTupleKey()
+			got := v2breaking.CheckReason(typesys, tk)
+			if negativeCases[tc.name] {
+				require.Empty(t, got, "expected no breaking change reason")
+				return
+			}
+			require.Equal(t, tc.name, got)
+		})
+	}
+}
+
+// TestCheck_LogsExclusionShapesOnV2Rejection verifies that when v2Check rejects
+// a request with its wildcard exclusion error (ErrWildcardInvalidRequest) and
+// the caller falls back to v1, the "potential v2 Check resolution breaking
+// change" log fires with the correct reason field derived from the v2 error.
+func TestCheck_LogsExclusionShapesOnV2Rejection(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name       string
+		modelDSL   string
+		tuples     []*openfgav1.TupleKey
+		user       string
+		wantReason string
+	}{
+		{
+			name: "wildcard_with_exclusion_direct",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define public: [user:*]
+						define blocked: [user]
+						define viewer: public but not blocked
+			`,
+			tuples:     []*openfgav1.TupleKey{tuple.NewTupleKey("document:d1", "public", "user:*")},
+			user:       "user:*",
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+		{
+			name: "wildcard_with_exclusion_via_ttu",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define blocked: [user]
+						define viewer: [user, user:*] but not blocked
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "parent", "folder:f1"),
+				tuple.NewTupleKey("folder:f1", "viewer", "user:*"),
+			},
+			user:       "user:*",
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			core, logs := observer.New(zap.InfoLevel)
+			testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+			s, req := setupCheckServer(t, tc.modelDSL, tc.tuples,
+				WithLogger(testLogger),
+				WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+			)
+
+			req.TupleKey = &openfgav1.CheckRequestTupleKey{
+				Object:   "document:d1",
+				Relation: "viewer",
+				User:     tc.user,
+			}
+
+			_, _ = s.Check(context.Background(), req)
+
+			require.Equal(t, 1, logs.FilterMessage("Weighted graph check failed, falling back").Len(),
+				"expected v2 to have errored and fallen back")
+
+			entries := logs.FilterMessage(logMessage).All()
+			require.Len(t, entries, 1, "expected exactly one breaking-change log")
+			fields := fieldMap(entries[0].Context)
+			require.Equal(t, tc.wantReason, fields["reason"])
+		})
+	}
+}
+
+// TestCheck_LogsExclusionShapesOnV2Fallback verifies that when v2Check fails
+// with a non-terminal error and the request falls back to v1, we still emit
+// the "potential v2 Check resolution breaking change" log on exclusion shapes.
+//
+// This uses a model that trips ErrInvalidModel in the weighted-graph builder
+// (intersection whose branches reach different terminal types) so v2Check
+// errors out and the v1 path runs.
+func TestCheck_LogsExclusionShapesOnV2Fallback(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// The exclusion shape (viewer with a Difference) is nested behind an
+	// intersection with a mixed-terminal-type branch (viewer AND bot_gate).
+	// The weighted graph builder rejects the model outright, so v2Check errors
+	// before it can even inspect the exclusion — forcing the fallback path
+	// where CheckExclusionReason must do the schema walk itself.
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type bot
+		type document
+			relations
+				define user_public: [user:*]
+				define user_blocked: [user]
+				define bot_gate: [bot]
+				define viewer: (user_public but not user_blocked) and bot_gate
+	`
+
+	core, logs := observer.New(zap.InfoLevel)
+	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+	s, req := setupCheckServer(t, modelDSL,
+		[]*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:d1", "user_public", "user:*"),
+		},
+		WithLogger(testLogger),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+
+	req.TupleKey = &openfgav1.CheckRequestTupleKey{
+		Object:   "document:d1",
+		Relation: "viewer",
+		User:     "user:alice",
+	}
+
+	// The v1 fallback answer isn't the focus — the log is.
+	_, _ = s.Check(context.Background(), req)
+
+	// Confirm fallback happened.
+	require.Equal(t, 1, logs.FilterMessage("Weighted graph check failed, falling back").Len(),
+		"expected v2 fallback to have occurred")
+
+	entries := logs.FilterMessage(logMessage).All()
+	require.Len(t, entries, 1, "expected exactly one breaking-change log on fallback path")
+	fields := fieldMap(entries[0].Context)
+	require.Equal(t, v2breaking.ReasonWildcardWithExclusion, fields["reason"])
 }

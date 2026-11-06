@@ -50,6 +50,11 @@ var (
 
 	// ErrInvalidRelation is returned when a model failed due to invalid relation.
 	ErrInvalidRelation = errors.New("invalid relation")
+
+	// ErrEmptyRelationReference is returned when a RelationReference has its relation_or_wildcard
+	// oneof set but yields neither a wildcard nor a non-empty relation. This shape survives proto
+	// validation but causes a nil pointer dereference in the language graph builder.
+	ErrEmptyRelationReference = errors.New("empty relation reference")
 )
 
 // InvalidTypeError represents an error indicating an invalid object type.
@@ -157,4 +162,12 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 	}
 
 	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
+}
+
+// EmptyRelationReferenceError returns an error for a RelationReference whose relation_or_wildcard
+// oneof is set but yields neither a wildcard nor a non-empty relation. This wraps
+// ErrEmptyRelationReference so errors.Is works, while providing a diagnosable message.
+func EmptyRelationReferenceError(objectType, relation, relatedObjectType string) error {
+	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' has an empty relation reference: %w",
+		relatedObjectType, relation, objectType, ErrEmptyRelationReference)
 }

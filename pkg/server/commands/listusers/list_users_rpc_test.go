@@ -2,7 +2,9 @@ package listusers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -2605,8 +2607,8 @@ func TestListUsersCycleDetection(t *testing.T) {
 		}()
 
 		select {
-		case <-channelWithError:
-			require.FailNow(t, "expected 0 errors")
+		case err := <-channelWithError:
+			require.FailNow(t, "expected 0 errors", "got: %v", err)
 		case <-channelWithResults:
 			require.FailNow(t, "expected 0 results")
 		case <-channelDone:
@@ -3816,8 +3818,8 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 	OUTER:
 		for {
 			select {
-			case <-channelWithError:
-				require.FailNow(t, "expected 0 errors")
+			case err := <-channelWithError:
+				require.FailNow(t, "expected 0 errors", "got: %v", err)
 			case result := <-channelWithResults:
 				actualResults = append(actualResults, struct {
 					user               string
@@ -4348,4 +4350,475 @@ func TestListUsersDatastoreThrottler(t *testing.T) {
 		require.NotNil(t, resp)
 		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is zero")
 	})
+}
+
+// TestListUsersOperandsExceedingBreadthLimit verifies that a union or
+// intersection whose number of child operands exceeds resolveNodeBreadthLimit
+// is still expanded completely. Each operand resolves to more than one user, so
+// the whole result set must be returned regardless of how operand expansion is
+// scheduled against the breadth limit.
+func TestListUsersOperandsExceedingBreadthLimit(t *testing.T) {
+	// A breadth limit of 1 is smaller than the 2 operands in each model below.
+	const breadthLimit = 1
+
+	// r1 and r2 each resolve to more than one user; user:a and user:b belong to
+	// both, so the intersection is non-empty.
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("doc:1", "r1", "user:a"),
+		tuple.NewTupleKey("doc:1", "r1", "user:b"),
+		tuple.NewTupleKey("doc:1", "r1", "user:c"),
+		tuple.NewTupleKey("doc:1", "r2", "user:a"),
+		tuple.NewTupleKey("doc:1", "r2", "user:b"),
+		tuple.NewTupleKey("doc:1", "r2", "user:d"),
+	}
+
+	tests := map[string]struct {
+		model    string
+		expected []string
+	}{
+		"union": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type doc
+					relations
+						define r1: [user]
+						define r2: [user]
+						define viewer: r1 or r2`,
+			expected: []string{"user:a", "user:b", "user:c", "user:d"},
+		},
+		"intersection": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type doc
+					relations
+						define r1: [user]
+						define r2: [user]
+						define viewer: r1 and r2`,
+			expected: []string{"user:a", "user:b"},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			ds := memory.New()
+			t.Cleanup(ds.Close)
+
+			model := testutils.MustTransformDSLToProtoWithID(tc.model)
+			storeID := ulid.Make().String()
+			require.NoError(t, ds.WriteAuthorizationModel(ctx, storeID, model))
+			require.NoError(t, ds.Write(ctx, storeID, nil, tuples))
+
+			typesys, err := typesystem.NewAndValidate(ctx, model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+			res, err := NewListUsersQuery(ds, nil,
+				WithResolveNodeBreadthLimit(breadthLimit),
+			).ListUsers(ctx, &openfgav1.ListUsersRequest{
+				StoreId:     storeID,
+				Object:      &openfgav1.Object{Type: "doc", Id: "1"},
+				Relation:    "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			})
+			require.NoError(t, err)
+
+			got := make([]string, 0, len(res.GetUsers()))
+			for _, u := range res.GetUsers() {
+				got = append(got, tuple.UserProtoToString(u))
+			}
+			require.ElementsMatch(t, tc.expected, got)
+		})
+	}
+}
+
+func TestListUsersExclusionDeadlineDoesNotLeakSubtractedUsers(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	store := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define blocked: [user]
+				define viewer: [user] but not blocked`)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	// Every base user is also subtracted, so none has the relationship.
+	baseTuples := make([]*openfgav1.Tuple, 0, 20)
+	for i := range 20 {
+		baseTuples = append(baseTuples, &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "viewer", fmt.Sprintf("user:%d", i))})
+	}
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+		Relation: "viewer",
+		Object:   "document:1",
+	}, gomock.Any()).Return(storage.NewStaticTupleIterator(baseTuples), nil)
+	// The subtract operand only returns once the deadline expires.
+	mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+		Relation: "blocked",
+		Object:   "document:1",
+	}, gomock.Any()).DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+	resp, err := NewListUsersQuery(mockDatastore, emptyContextualTuples, WithListUsersDeadline(50*time.Millisecond)).ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:     store,
+		Object:      &openfgav1.Object{Type: "document", Id: "1"},
+		Relation:    "viewer",
+		UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+	})
+
+	require.NoError(t, err)
+	require.Empty(t, resp.GetUsers())
+}
+
+func TestListUsersExclusionCancelledSubtract(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	store := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define blocked: [user]
+				define viewer: [user] but not blocked`)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+	viewer, err := typesys.GetRelation("document", "viewer")
+	require.NoError(t, err)
+
+	baseTuples := make([]*openfgav1.Tuple, 0, 20)
+	for i := range 20 {
+		baseTuples = append(baseTuples, &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "viewer", fmt.Sprintf("user:%d", i))})
+	}
+
+	for _, cancelled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("cancelled_%t", cancelled), func(t *testing.T) {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+
+			ctx, cancel := context.WithCancel(typesystem.ContextWithTypesystem(context.Background(), typesys))
+			defer cancel()
+
+			baseDone := make(chan struct{})
+			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+			mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+				Relation: "viewer",
+				Object:   "document:1",
+			}, gomock.Any()).Return(&signalDoneTupleIterator{TupleIterator: storage.NewStaticTupleIterator(baseTuples), done: baseDone}, nil)
+			mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+				Relation: "blocked",
+				Object:   "document:1",
+			}, gomock.Any()).DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+				if !cancelled {
+					return storage.NewStaticTupleIterator(nil), nil
+				}
+				// Cancel while the subtract operand is blocked, once the base operand is complete.
+				<-baseDone
+				cancel()
+				<-ctx.Done()
+				return nil, ctx.Err()
+			})
+
+			foundUsersCh := make(chan foundUser, len(baseTuples))
+			resp := NewListUsersQuery(mockDatastore, emptyContextualTuples).expandExclusion(ctx, &internalListUsersRequest{
+				ListUsersRequest: &openfgav1.ListUsersRequest{
+					StoreId:     store,
+					Object:      &openfgav1.Object{Type: "document", Id: "1"},
+					Relation:    "viewer",
+					UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				},
+				visitedUsersetsMap: map[string]struct{}{},
+			}, viewer.GetRewrite().GetUserset().(*openfgav1.Userset_Difference), foundUsersCh)
+			close(foundUsersCh)
+
+			if cancelled {
+				require.ErrorIs(t, resp.err, context.Canceled)
+				require.Empty(t, foundUsersCh)
+				return
+			}
+			require.NoError(t, resp.err)
+			require.Len(t, foundUsersCh, len(baseTuples))
+		})
+	}
+}
+
+func TestListUsersDeadlineDoesNotHideErrors(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	store := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, user with xEqualsOne, group#member]
+		condition xEqualsOne(x: int) {
+			x == 1
+		}`)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		conditionErr  bool  // a tuple's condition fails to evaluate before the deadline
+		memberErr     error // returned by the group member read once the deadline expires
+		expectedError string
+	}{
+		"error_before_deadline_fails_the_request": {
+			conditionErr:  true,
+			memberErr:     context.DeadlineExceeded,
+			expectedError: "missing context parameters",
+		},
+		"datastore_error_after_deadline_returns_partial_results": {
+			memberErr: errors.New("simulated error"),
+		},
+		"context_error_returns_partial_results": {
+			memberErr: context.DeadlineExceeded,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+
+			viewerTuples := []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+			}
+			if test.conditionErr {
+				viewerTuples = append(viewerTuples, &openfgav1.Tuple{Key: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:bob", "xEqualsOne", nil)})
+			}
+			viewerTuples = append(viewerTuples, &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "viewer", "group:1#member")})
+
+			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+			mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+				Relation: "viewer",
+				Object:   "document:1",
+			}, gomock.Any()).Return(storage.NewStaticTupleIterator(viewerTuples), nil)
+			mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+				Relation: "member",
+				Object:   "group:1",
+			}, gomock.Any()).DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+				<-ctx.Done()
+				return nil, test.memberErr
+			})
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+			resp, err := NewListUsersQuery(mockDatastore, emptyContextualTuples, WithListUsersDeadline(50*time.Millisecond)).ListUsers(ctx, &openfgav1.ListUsersRequest{
+				StoreId:     store,
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			})
+
+			if test.expectedError != "" {
+				require.ErrorContains(t, err, test.expectedError)
+				require.Nil(t, resp)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, resp.GetUsers(), 1)
+			require.Equal(t, "user:alice", tuple.UserProtoToString(resp.GetUsers()[0]))
+		})
+	}
+}
+
+func TestIsOnlyContextError(t *testing.T) {
+	other := errors.New("other")
+	tests := map[string]struct {
+		err      error
+		expected bool
+	}{
+		"canceled":                {err: context.Canceled, expected: true},
+		"deadline_exceeded":       {err: context.DeadlineExceeded, expected: true},
+		"wrapped_context_error":   {err: fmt.Errorf("read: %w", context.Canceled), expected: true},
+		"joined_context_errors":   {err: errors.Join(context.Canceled, context.DeadlineExceeded), expected: true},
+		"other":                   {err: other, expected: false},
+		"joined_with_other":       {err: errors.Join(context.DeadlineExceeded, other), expected: false},
+		"wrapped_join_with_other": {err: fmt.Errorf("expand: %w", errors.Join(context.Canceled, other)), expected: false},
+		"multi_wrap_with_other":   {err: fmt.Errorf("%w: %w", context.Canceled, other), expected: false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.expected, isOnlyContextError(test.err))
+		})
+	}
+}
+
+func TestListUsersConditionErrorAfterCancellationIsAContextError(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	store := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with xEqualsOne]
+		condition xEqualsOne(x: int) {
+			x == 1
+		}`)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	ctx, cancel := context.WithCancel(typesystem.ContextWithTypesystem(context.Background(), typesys))
+	defer cancel()
+
+	// The condition fails to evaluate, as an interrupted evaluation would, once the context is cancelled.
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any(), gomock.Any()).Return(&cancelOnNextTupleIterator{
+		TupleIterator: storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:bob", "xEqualsOne", nil)},
+		}),
+		cancel: cancel,
+	}, nil)
+
+	resp := NewListUsersQuery(mockDatastore, emptyContextualTuples).expandDirect(ctx, &internalListUsersRequest{
+		ListUsersRequest: &openfgav1.ListUsersRequest{
+			StoreId:     store,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		},
+		visitedUsersetsMap: map[string]struct{}{},
+	}, make(chan foundUser, 1))
+
+	require.ErrorIs(t, resp.err, context.Canceled)
+	require.True(t, isOnlyContextError(resp.err), resp.err)
+}
+
+// cancelOnNextTupleIterator cancels the context after each tuple it returns.
+type cancelOnNextTupleIterator struct {
+	storage.TupleIterator
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnNextTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	t, err := c.TupleIterator.Next(ctx)
+	c.cancel()
+	return t, err
+}
+
+func TestListUsersExclusionErrorBeforeDeadlineDoesNotOverGrant(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	store := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define blocked: [user with xEqualsOne]
+				define member: [user] but not blocked
+		type document
+			relations
+				define viewer: [user, group#member]
+		condition xEqualsOne(x: int) {
+			x == 1
+		}`)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	// The viewer scan yields the userset, then stays slow until the deadline.
+	mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+		Relation: "viewer",
+		Object:   "document:1",
+	}, gomock.Any()).Return(&slowAfterFirstTupleIterator{
+		TupleIterator: storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "viewer", "group:1#member")},
+		}),
+	}, nil)
+	mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+		Relation: "member",
+		Object:   "group:1",
+	}, gomock.Any()).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("group:1", "member", "user:bob")},
+	}), nil)
+	// bob is blocked, but the condition fails to evaluate without the x parameter.
+	mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
+		Relation: "blocked",
+		Object:   "group:1",
+	}, gomock.Any()).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+		{Key: tuple.NewTupleKeyWithCondition("group:1", "blocked", "user:bob", "xEqualsOne", nil)},
+	}), nil)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+	resp, err := NewListUsersQuery(mockDatastore, emptyContextualTuples, WithListUsersDeadline(50*time.Millisecond)).ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:     store,
+		Object:      &openfgav1.Object{Type: "document", Id: "1"},
+		Relation:    "viewer",
+		UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+	})
+
+	require.ErrorContains(t, err, "missing context parameters")
+	require.Nil(t, resp)
+}
+
+// slowAfterFirstTupleIterator returns its first tuple, then blocks until the context is done.
+type slowAfterFirstTupleIterator struct {
+	storage.TupleIterator
+	returned bool
+}
+
+func (s *slowAfterFirstTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if !s.returned {
+		s.returned = true
+		return s.TupleIterator.Next(ctx)
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// signalDoneTupleIterator closes done once the wrapped iterator is exhausted.
+type signalDoneTupleIterator struct {
+	storage.TupleIterator
+	done chan struct{}
+	once sync.Once
+}
+
+func (s *signalDoneTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	t, err := s.TupleIterator.Next(ctx)
+	if errors.Is(err, storage.ErrIteratorDone) {
+		s.once.Do(func() { close(s.done) })
+	}
+	return t, err
 }
