@@ -964,8 +964,8 @@ func TestEvaluation(t *testing.T) {
 // Openfga-Authorization-Model-Id HTTP header is forwarded through grpc-gateway
 // to the AuthZEN Evaluation endpoint.
 //
-// Like X-Forwarded-Proto, this header is not an IANA permanent header and is
-// not prefixed with Grpc-Metadata-, so it requires an explicit match in
+// Like X-Forwarded-Proto, this header is not an IANA permanent header, so the
+// default header matcher drops it and it requires an explicit match in
 // WithIncomingHeaderMatcher (cmd/run/run.go). Without it, the header would be
 // silently dropped and the endpoint would always use the latest model.
 func TestEvaluationHTTPAuthorizationModelIDHeader(t *testing.T) {
