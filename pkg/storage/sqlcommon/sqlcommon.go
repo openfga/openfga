@@ -415,6 +415,74 @@ func NewRowGetter(connector Connector, builder SQLBuilder) (SQLIteratorRowGetter
 	}, nil
 }
 
+// PageKey is one column of the order a paged row getter reads its pages in: Expr is the SQL
+// expression to order and compare by, and Value returns that column of a scanned record.
+type PageKey struct {
+	Expr  string
+	Value func(*storage.TupleRecord) string
+}
+
+var (
+	PageKeyObjectType = PageKey{"object_type", func(r *storage.TupleRecord) string { return r.ObjectType }}
+	PageKeyObjectID   = PageKey{"object_id", func(r *storage.TupleRecord) string { return r.ObjectID }}
+	PageKeyRelation   = PageKey{"relation", func(r *storage.TupleRecord) string { return r.Relation }}
+	PageKeyUser       = PageKey{"_user", func(r *storage.TupleRecord) string { return r.User }} //nolint:staticcheck // _user is scanned into User.
+
+	// TuplePrimaryKey orders tuples of one store by the tuple table's primary key.
+	TuplePrimaryKey = []PageKey{PageKeyObjectType, PageKeyObjectID, PageKeyRelation, PageKeyUser}
+)
+
+// pager is a row getter that runs its query one page at a time, in a stable order, starting
+// after a given record. SQLTupleIterator closes the rows of each page before its consumer sees
+// them, so it never holds a connection between calls.
+type pager interface {
+	getPage(ctx context.Context, after *storage.TupleRecord, limit int) (Rows, error)
+}
+
+type pagedRowGetter struct {
+	connector Connector
+	sb        sq.SelectBuilder
+	keys      []PageKey
+}
+
+var _ pager = (*pagedRowGetter)(nil)
+
+// NewPagedRowGetter returns a row getter that reads sb in pages ordered by keys, which must
+// identify a row uniquely among the rows sb selects. The builder must not have its own ORDER BY
+// or LIMIT. SQLTupleIterator drains and closes each page before returning its tuples, so it
+// holds no connection between calls, however large the result.
+func NewPagedRowGetter(connector Connector, sb sq.SelectBuilder, keys ...PageKey) SQLIteratorRowGetter {
+	return &pagedRowGetter{connector: connector, sb: sb, keys: keys}
+}
+
+// GetRows returns the first page, of iteratorPrefetch rows.
+func (p *pagedRowGetter) GetRows(ctx context.Context) (Rows, error) {
+	return p.getPage(ctx, nil, iteratorPrefetch)
+}
+
+// getPage returns up to limit rows ordered by the page keys. If after is set, it returns only rows
+// whose keys sort after its keys.
+func (p *pagedRowGetter) getPage(ctx context.Context, after *storage.TupleRecord, limit int) (Rows, error) {
+	exprs := make([]string, len(p.keys))
+	for i, k := range p.keys {
+		exprs[i] = k.Expr
+	}
+	sb := p.sb.OrderBy(exprs...).Limit(uint64(limit))
+	if after != nil {
+		vals := make([]any, len(p.keys))
+		for i, k := range p.keys {
+			vals[i] = k.Value(after)
+		}
+		placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(vals)), ", ")
+		sb = sb.Where("("+strings.Join(exprs, ", ")+") > ("+placeholders+")", vals...)
+	}
+	rg, err := NewRowGetter(p.connector, sb)
+	if err != nil {
+		return nil, err
+	}
+	return rg.GetRows(ctx)
+}
+
 type SBIteratorQuery struct {
 	sb sq.SelectBuilder
 }
@@ -444,17 +512,34 @@ type Rows interface {
 	Scan(dest ...any) error
 }
 
+const (
+	// SQLTupleIterator reads this many rows ahead of its consumer. It is also the size of a
+	// paged row getter's first page.
+	iteratorPrefetch = 100
+	// Each page doubles in size, up to this many rows.
+	maxIteratorPage = 1000
+)
+
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
 // interface for iterating over tuples fetched from a SQL database.
+//
+// It reads rows ahead into a buffer and closes them as soon as they are drained. A result that
+// fits the buffer, or any result from a paged row getter (see NewPagedRowGetter), holds no pool
+// connection between Next and Head calls. A larger result from any other row getter keeps its
+// connection until it is drained or Stop is called.
 type SQLTupleIterator struct {
 	rows           Rows // GUARDED_BY(mu)
 	handleSQLError errorHandlerFn
 
-	// firstRow is used as a temporary storage place if head is called.
-	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
-	// the iterator. Thus, we will need to store this first item so that future Head() and Next()
-	// will use this item instead. Otherwise, the first item will be lost.
-	firstRow *storage.TupleRecord // GUARDED_BY(mu)
+	// buf holds rows read ahead of the consumer, from buf[pos]. A result that fits in buf, or each
+	// page of a pager, has its rows closed, and its connection returned, before the consumer sees
+	// the tuples, so the consumer can issue nested reads without waiting on that connection (#3326).
+	buf      []*storage.TupleRecord // GUARDED_BY(mu)
+	pos      int                    // GUARDED_BY(mu)
+	err      error                  // GUARDED_BY(mu); returned once buf is drained
+	done     bool                   // GUARDED_BY(mu); rows are drained and closed
+	pageSize int                    // GUARDED_BY(mu)
+	last     *storage.TupleRecord   // GUARDED_BY(mu); last record of the previous page
 	mu       sync.Mutex
 
 	rowGetter SQLIteratorRowGetter
@@ -484,19 +569,25 @@ func SQLIteratorColumns() []string {
 // NewSQLTupleIterator returns a SQL tuple iterator.
 func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandlerFn) *SQLTupleIterator {
 	return &SQLTupleIterator{
-		rows:           nil,
 		handleSQLError: errHandler,
-		firstRow:       nil,
-		mu:             sync.Mutex{},
 		rowGetter:      rowGetter,
+		pageSize:       iteratorPrefetch,
 	}
 }
 
+// fetchBuffer runs the query for the next page, or the whole query without a pager, and records its
+// duration. Callers must hold mu.
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
 	start := time.Now()
-	curRows, err := t.rowGetter.GetRows(ctx)
+	var curRows Rows
+	var err error
+	if p, ok := t.rowGetter.(pager); ok {
+		curRows, err = p.getPage(ctx, t.last, t.pageSize)
+	} else {
+		curRows, err = t.rowGetter.GetRows(ctx)
+	}
 	elapsed := time.Since(start)
 	if err != nil {
 		storageErr := t.handleSQLError(err)
@@ -508,105 +599,89 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	return nil
 }
 
+// next returns the next record and advances past it.
 func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
-
-	if t.rows == nil {
-		if err := t.fetchBuffer(ctx); err != nil {
-			t.mu.Unlock()
-			return nil, err
-		}
-	}
-
-	if t.firstRow != nil {
-		// If head was called previously, we don't need to scan / next
-		// again as the data is already there and the internal iterator would be advanced via `t.rows.Next()`.
-		// Calling t.rows.Next() in this case would lose the first row data.
-		//
-		// For example, let's say there are 3 items [1,2,3]
-		// If we called Head() and t.firstRow is empty, the rows will only be left with [2,3].
-		// Thus, we will need to save item [1] in firstRow.  This allows future next() and head() to consume
-		// [1] first.
-		// If head() was not called, t.firstRow would be nil and we can follow the t.rows.Next() logic below.
-		firstRow := t.firstRow
-		t.firstRow = nil
-		t.mu.Unlock()
-		return firstRow, nil
-	}
-
-	if !t.rows.Next() {
-		err := t.rows.Err()
-		t.mu.Unlock()
-		if err != nil {
-			return nil, t.handleSQLError(err)
-		}
-		return nil, storage.ErrIteratorDone
-	}
-
-	var conditionName sql.NullString
-	var conditionContext []byte
-	var record storage.TupleRecord
-	err := t.rows.Scan(
-		&record.Store,
-		&record.ObjectType,
-		&record.ObjectID,
-		&record.Relation,
-		&record.User,
-		&conditionName,
-		&conditionContext,
-		&record.Ulid,
-		&record.InsertedAt,
-	)
-	t.mu.Unlock()
-
+	defer t.mu.Unlock()
+	record, err := t.peek(ctx)
 	if err != nil {
-		return nil, t.handleSQLError(err)
+		return nil, err
 	}
-
-	record.ConditionName = conditionName.String
-
-	if conditionContext != nil {
-		var conditionContextStruct structpb.Struct
-		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
-			return nil, err
-		}
-		record.ConditionContext = &conditionContextStruct
-	}
-
-	return &record, nil
+	t.buf[t.pos] = nil
+	t.pos++
+	return record, nil
 }
 
+// head returns the next record without advancing past it.
 func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	return t.peek(ctx)
+}
 
-	if t.rows == nil {
-		if err := t.fetchBuffer(ctx); err != nil {
-			return nil, err
+// peek returns the next buffered record, running the query and refilling the buffer as needed.
+// A failed query leaves rows nil, so the next call retries it. Callers must hold mu.
+func (t *SQLTupleIterator) peek(ctx context.Context) (*storage.TupleRecord, error) {
+	if t.pos == len(t.buf) && !t.done {
+		if t.rows == nil {
+			if err := t.fetchBuffer(ctx); err != nil {
+				return nil, err
+			}
 		}
+		t.fill()
 	}
-
-	if t.firstRow != nil {
-		// If head was called previously, we don't need to scan / next
-		// again as the data is already there and the internal iterator would be advanced via `t.rows.Next()`.
-		// Calling t.rows.Next() in this case would lose the first row data.
-		//
-		// For example, let's say there are 3 items [1,2,3]
-		// If we called Head() and t.firstRow is empty, the rows will only be left with [2,3].
-		// Thus, we will need to save item [1] in firstRow.  This allows future next() and head() to return
-		// [1] first. Note that for head(), we will not unset t.firstRow.  Therefore, calling head() multiple times
-		// will yield the same result.
-		// If head() was not called, t.firstRow would be nil, and we can follow the t.rows.Next() logic below.
-		return t.firstRow, nil
+	if t.pos < len(t.buf) {
+		return t.buf[t.pos], nil
 	}
+	if t.err != nil {
+		return nil, t.err
+	}
+	return nil, storage.ErrIteratorDone
+}
 
-	if !t.rows.Next() {
-		if err := t.rows.Err(); err != nil {
-			return nil, t.handleSQLError(err)
+// fill reads rows into buf and closes them as soon as they are drained, which returns the
+// connection to the pool before the consumer sees the buffered tuples. A pager's page is always
+// drained. Without a pager, fill reads up to pageSize rows, and a larger result keeps its rows,
+// and its connection, open until a later fill drains it or Stop closes it.
+func (t *SQLTupleIterator) fill() {
+	t.buf, t.pos = t.buf[:0], 0
+	_, paged := t.rowGetter.(pager)
+	for paged || len(t.buf) < t.pageSize {
+		if !t.rows.Next() {
+			break
 		}
-		return nil, storage.ErrIteratorDone
+		record, err := t.scan()
+		if err != nil {
+			t.err, t.done = err, true
+			t.closeRows()
+			return
+		}
+		t.buf = append(t.buf, record)
 	}
+	if !paged && len(t.buf) == t.pageSize {
+		return
+	}
+	if err := t.rows.Err(); err != nil {
+		t.err = t.handleSQLError(err)
+	}
+	t.closeRows()
+	if t.err != nil || !paged || len(t.buf) < t.pageSize {
+		t.done = true
+		return
+	}
+	// A full page: the next fill queries the page after it.
+	t.last = t.buf[len(t.buf)-1]
+	t.pageSize = min(2*t.pageSize, maxIteratorPage)
+}
 
+// closeRows closes the rows, which returns their connection to the pool. Callers must hold mu.
+func (t *SQLTupleIterator) closeRows() {
+	_ = t.rows.Close()
+	t.rows = nil
+}
+
+// scan reads the current row into a record and decodes its condition context.
+func (t *SQLTupleIterator) scan() (*storage.TupleRecord, error) {
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
@@ -634,7 +709,6 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 		}
 		record.ConditionContext = &conditionContextStruct
 	}
-	t.firstRow = &record
 
 	return &record, nil
 }
@@ -705,6 +779,7 @@ func (t *SQLTupleIterator) Stop() {
 	if t.rows != nil {
 		_ = t.rows.Close()
 	}
+	t.buf, t.pos, t.done = nil, 0, true
 }
 
 // IsOrdered conservatively returns false until datastore methods expose ordering guarantees.

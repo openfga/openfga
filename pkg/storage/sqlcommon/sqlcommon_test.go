@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -315,4 +316,170 @@ func TestDeterministicMarshalOpts(t *testing.T) {
 
 	require.Equal(t, b1, b2, "DeterministicMarshalOpts must produce identical bytes across calls")
 	require.True(t, DeterministicMarshalOpts.Deterministic)
+}
+
+// poolRowGetter models a connection pool: GetRows takes a connection, and only Close on the
+// returned rows gives it back.
+type poolRowGetter struct {
+	conns chan struct{}
+	n     int
+}
+
+func (p *poolRowGetter) GetRows(ctx context.Context) (Rows, error) {
+	select {
+	case p.conns <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return &poolRows{pool: p.conns, n: p.n}, nil
+}
+
+type poolRows struct {
+	pool   chan struct{}
+	n, i   int
+	closed bool
+}
+
+func (r *poolRows) Close() error {
+	if !r.closed {
+		r.closed = true
+		<-r.pool
+	}
+	return nil
+}
+func (r *poolRows) Err() error { return nil }
+func (r *poolRows) Next() bool {
+	if r.closed || r.i >= r.n {
+		return false
+	}
+	r.i++
+	return true
+}
+func (r *poolRows) Scan(dest ...any) error {
+	*dest[0].(*string) = "store"
+	*dest[1].(*string) = "document"
+	*dest[2].(*string) = strconv.Itoa(r.i)
+	*dest[3].(*string) = "viewer"
+	*dest[4].(*string) = "user:" + strconv.Itoa(r.i)
+	*dest[7].(*string) = strconv.Itoa(r.i)
+	*dest[8].(*time.Time) = time.Unix(0, 0)
+	return nil
+}
+
+func TestSQLTupleIteratorReleasesConnection(t *testing.T) {
+	t.Parallel()
+
+	// One connection. A consumer that reads one tuple and then issues a nested read must not
+	// wait on the connection its own open iterator holds (#3326).
+	pool := &poolRowGetter{conns: make(chan struct{}, 1), n: 2}
+
+	outer := NewSQLTupleIterator(pool, identityErrHandler)
+	defer outer.Stop()
+	_, err := outer.Next(context.Background())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	nested := NewSQLTupleIterator(pool, identityErrHandler)
+	defer nested.Stop()
+	_, err = nested.Next(ctx)
+	require.NoError(t, err, "nested read blocked on the connection held by the outer iterator")
+}
+
+func TestSQLTupleIteratorOrder(t *testing.T) {
+	t.Parallel()
+
+	for _, n := range []int{0, 1, 2, iteratorPrefetch, iteratorPrefetch + 1, 2*iteratorPrefetch + 3} {
+		pool := &poolRowGetter{conns: make(chan struct{}, 1), n: n}
+		iter := NewSQLTupleIterator(pool, identityErrHandler)
+		ctx := context.Background()
+
+		for i := 1; i <= n; i++ {
+			h, err := iter.Head(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "document:"+strconv.Itoa(i), h.GetKey().GetObject())
+			h, err = iter.Head(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "document:"+strconv.Itoa(i), h.GetKey().GetObject())
+			got, err := iter.Next(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "document:"+strconv.Itoa(i), got.GetKey().GetObject())
+		}
+		_, err := iter.Head(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		_, err = iter.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter.Stop()
+		require.Empty(t, pool.conns, "connection not returned, n=%d", n)
+	}
+}
+
+// pagedPool serves its rows in pages, as a paged row getter does: each page is a new query that
+// takes a connection, ordered by object_id and starting after the given record.
+type pagedPool struct {
+	poolRowGetter
+	pages int
+}
+
+func (p *pagedPool) getPage(ctx context.Context, after *storage.TupleRecord, limit int) (Rows, error) {
+	start := 0
+	if after != nil {
+		start, _ = strconv.Atoi(after.ObjectID)
+	}
+	select {
+	case p.conns <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	p.pages++
+	return &poolRows{pool: p.conns, i: start, n: min(start+limit, p.n)}, nil
+}
+
+func TestSQLTupleIteratorPagedReleasesConnection(t *testing.T) {
+	t.Parallel()
+
+	// A result larger than one page must not hold its connection while the consumer issues
+	// nested reads (#3326).
+	pool := &pagedPool{poolRowGetter: poolRowGetter{conns: make(chan struct{}, 1), n: 3 * iteratorPrefetch}}
+
+	outer := NewSQLTupleIterator(pool, identityErrHandler)
+	defer outer.Stop()
+	for i := 0; i < 2*iteratorPrefetch; i++ {
+		_, err := outer.Next(context.Background())
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		nested := NewSQLTupleIterator(&poolRowGetter{conns: pool.conns, n: 1}, identityErrHandler)
+		_, err = nested.Next(ctx)
+		nested.Stop()
+		cancel()
+		require.NoError(t, err, "nested read %d blocked on the connection held by the outer iterator", i)
+	}
+}
+
+func TestSQLTupleIteratorPagedOrder(t *testing.T) {
+	t.Parallel()
+
+	for _, n := range []int{0, 1, iteratorPrefetch - 1, iteratorPrefetch, iteratorPrefetch + 1, 3 * iteratorPrefetch, 3*iteratorPrefetch + 1, 25 * iteratorPrefetch} {
+		pool := &pagedPool{poolRowGetter: poolRowGetter{conns: make(chan struct{}, 1), n: n}}
+		iter := NewSQLTupleIterator(pool, identityErrHandler)
+		ctx := context.Background()
+
+		for i := 1; i <= n; i++ {
+			h, err := iter.Head(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "document:"+strconv.Itoa(i), h.GetKey().GetObject())
+			got, err := iter.Next(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "document:"+strconv.Itoa(i), got.GetKey().GetObject())
+			require.Empty(t, pool.conns, "connection held between calls, n=%d i=%d", n, i)
+		}
+		_, err := iter.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter.Stop()
+		require.Empty(t, pool.conns, "connection not returned, n=%d", n)
+		if n == 25*iteratorPrefetch {
+			require.Less(t, pool.pages, 10, "page size does not grow")
+		}
+	}
 }
