@@ -880,29 +880,9 @@ func GetDeleteWriteChangelogItems(
 			}
 		}
 
-		id := ulid.MustNew(ulid.Timestamp(writeData.Now), entropy).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
-		deleteConditions = append(deleteConditions, sq.Eq{
-			"object_type": objectType,
-			"object_id":   objectID,
-			"relation":    tk.GetRelation(),
-			"_user":       tk.GetUser(),
-			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-		})
-
-		changeLogItems = append(changeLogItems, []interface{}{
-			store,
-			objectType,
-			objectID,
-			tk.GetRelation(),
-			tk.GetUser(),
-			"",
-			nil, // Redact condition info for Deletes since we only need the base triplet (object, relation, user).
-			int32(openfgav1.TupleOperation_TUPLE_OPERATION_DELETE),
-			id,
-			sq.Expr("NOW()"),
-		})
+		deleteCondition, deleteChangeLogItem := deleteItems(store, tk, ulid.MustNew(ulid.Timestamp(writeData.Now), entropy).String())
+		deleteConditions = append(deleteConditions, deleteCondition)
+		changeLogItems = append(changeLogItems, deleteChangeLogItem)
 	}
 
 	writeItems := make([][]interface{}, 0, len(writeData.Writes))
@@ -915,7 +895,11 @@ func GetDeleteWriteChangelogItems(
 	// - Based on the results from step 3.a, which identified and locked existing rows, the system will compare values to the ones we’re trying to insert
 	// - On conflict ( values not identical ) - return an error 409 Conflict
 	// - For rows that DO NOT exist in DB - create both INSERT tuple & INSERT changelog statements
-	// c. Execute INSERTs as a single statement
+	// c. If on_duplicate: replace
+	// - Rows that exist with identical values are a no-op
+	// - Rows that exist with a different condition are deleted ( DELETE tuple & INSERT changelog statements ) and
+	//   inserted again with the new condition. The DELETEs run before the INSERTs, in the same transaction.
+	// d. Execute INSERTs as a single statement
 	//   On error, return 409 Conflict
 	for _, tk := range writeData.Writes {
 		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
@@ -929,6 +913,14 @@ func GetDeleteWriteChangelogItems(
 				}
 				// If tuple conditions are different, we throw an error.
 				return nil, nil, nil, storage.TupleConditionConflictError(tk)
+			case storage.OnDuplicateInsertReplace:
+				if storage.SameCondition(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
+					continue
+				}
+				// Delete the existing tuple, so that it is inserted again with the new condition below.
+				deleteCondition, deleteChangeLogItem := deleteItems(store, tk, ulid.MustNew(ulid.Timestamp(writeData.Now), entropy).String())
+				deleteConditions = append(deleteConditions, deleteCondition)
+				changeLogItems = append(changeLogItems, deleteChangeLogItem)
 			case storage.OnDuplicateInsertError:
 				fallthrough
 			default:
@@ -974,6 +966,34 @@ func GetDeleteWriteChangelogItems(
 		})
 	}
 	return deleteConditions, writeItems, changeLogItems, nil
+}
+
+// deleteItems returns the condition that deletes the tuple and the changelog item that records the delete.
+func deleteItems(store string, tk tupleUtils.TupleWithoutCondition, id string) (sq.Eq, []interface{}) {
+	objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+
+	deleteCondition := sq.Eq{
+		"object_type": objectType,
+		"object_id":   objectID,
+		"relation":    tk.GetRelation(),
+		"_user":       tk.GetUser(),
+		"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+	}
+
+	changeLogItem := []interface{}{
+		store,
+		objectType,
+		objectID,
+		tk.GetRelation(),
+		tk.GetUser(),
+		"",
+		nil, // Redact condition info for Deletes since we only need the base triplet (object, relation, user).
+		int32(openfgav1.TupleOperation_TUPLE_OPERATION_DELETE),
+		id,
+		sq.Expr("NOW()"),
+	}
+
+	return deleteCondition, changeLogItem
 }
 
 type WriteData struct {

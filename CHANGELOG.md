@@ -9,6 +9,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Changed
 - Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
+### Added
+- Added `"on_duplicate": "replace"` to the Write API. When a tuple that is written already exists with a different condition or context, it is replaced in the same transaction, so a condition's context (e.g. an expiry) can be changed without a delete and a write in separate requests. The changelog records the replacement as a delete followed by a write. [#2151](https://github.com/openfga/openfga/issues/2151)
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.

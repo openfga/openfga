@@ -333,6 +333,39 @@ func makeTupleLockKeys(deletes storage.Deletes, writes storage.Writes) []tupleLo
 	return keys
 }
 
+// deleteItems returns the condition that deletes the tuple and the changelog item that records the delete.
+func deleteItems(store string, tk tupleUtils.TupleWithoutCondition, id string) (sq.Eq, []interface{}) {
+	objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+
+	deleteCondition := sq.Eq{
+		"object_type":      objectType,
+		"object_id":        objectID,
+		"relation":         tk.GetRelation(),
+		"user_object_type": userObjectType,
+		"user_object_id":   userObjectID,
+		"user_relation":    userRelation,
+		"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+	}
+
+	changeLogItem := []interface{}{
+		store,
+		objectType,
+		objectID,
+		tk.GetRelation(),
+		userObjectType,
+		userObjectID,
+		userRelation,
+		"",
+		nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+		openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+		id,
+		sq.Expr("datetime('subsec')"),
+	}
+
+	return deleteCondition, changeLogItem
+}
+
 // buildRowConstructorIN builds "((?,?,?,?,?,?,?),(?,?,?,?,?,?,?),...)" and arg list for row-constructor IN.
 func buildRowConstructorIN(keys []tupleLockKey) (string, []interface{}) {
 	if len(keys) == 0 {
@@ -471,34 +504,9 @@ func (s *Datastore) write(
 			}
 		}
 
-		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
-
-		deleteConditions = append(deleteConditions, sq.Eq{
-			"object_type":      objectType,
-			"object_id":        objectID,
-			"relation":         tk.GetRelation(),
-			"user_object_type": userObjectType,
-			"user_object_id":   userObjectID,
-			"user_relation":    userRelation,
-			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-		})
-
-		changeLogItems = append(changeLogItems, []interface{}{
-			store,
-			objectType,
-			objectID,
-			tk.GetRelation(),
-			userObjectType,
-			userObjectID,
-			userRelation,
-			"",
-			nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
-			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id,
-			sq.Expr("datetime('subsec')"),
-		})
+		deleteCondition, deleteChangeLogItem := deleteItems(store, tk, ulid.MustNew(ulid.Timestamp(now), entropy).String())
+		deleteConditions = append(deleteConditions, deleteCondition)
+		changeLogItems = append(changeLogItems, deleteChangeLogItem)
 	}
 
 	writeItems := make([][]interface{}, 0, len(writes))
@@ -511,7 +519,11 @@ func (s *Datastore) write(
 	// - Based on the results from step 3.a, which identified and locked existing rows, the system will compare values to the ones we’re trying to insert
 	// - On conflict ( values not identical ) - return an error 409 Conflict
 	// - For rows that DO NOT exist in DB - create both INSERT tuple & INSERT changelog statements
-	// c. Execute INSERTs as a single statement
+	// c. If on_duplicate: replace
+	// - Rows that exist with identical values are a no-op
+	// - Rows that exist with a different condition are deleted ( DELETE tuple & INSERT changelog statements ) and
+	//   inserted again with the new condition. The DELETEs run before the INSERTs, in the same transaction.
+	// d. Execute INSERTs as a single statement
 	//   On error, return 409 Conflict
 	for _, tk := range writes {
 		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
@@ -525,6 +537,14 @@ func (s *Datastore) write(
 				}
 				// If tuple conditions are different, we throw an error.
 				return storage.TupleConditionConflictError(tk)
+			case storage.OnDuplicateInsertReplace:
+				if storage.SameCondition(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
+					continue
+				}
+				// Delete the existing tuple, so that it is inserted again with the new condition below.
+				deleteCondition, deleteChangeLogItem := deleteItems(store, tk, ulid.MustNew(ulid.Timestamp(now), entropy).String())
+				deleteConditions = append(deleteConditions, deleteCondition)
+				changeLogItems = append(changeLogItems, deleteChangeLogItem)
 			case storage.OnDuplicateInsertError:
 				fallthrough
 			default:

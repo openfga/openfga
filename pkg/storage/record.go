@@ -3,6 +3,7 @@ package storage
 import (
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -45,4 +46,18 @@ func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
 		),
 		Timestamp: timestamppb.New(t.InsertedAt),
 	}
+}
+
+// SameCondition returns true if both conditions have the same name and the same context.
+// A nil context and an empty one are the same, since a context without fields is stored as no context.
+func SameCondition(a, b *openfgav1.RelationshipCondition) bool {
+	if a.GetName() != b.GetName() {
+		return false
+	}
+
+	if len(a.GetContext().GetFields()) == 0 && len(b.GetContext().GetFields()) == 0 {
+		return true
+	}
+
+	return proto.Equal(a.GetContext(), b.GetContext())
 }
