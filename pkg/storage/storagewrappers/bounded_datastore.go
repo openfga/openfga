@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
+	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
 const timeWaitingAttribute = "datastore_time_waiting"
@@ -47,6 +50,7 @@ var (
 	_ storage.RelationshipTupleReader = (*BoundedTupleReader)(nil)
 	_ StorageInstrumentation          = (*BoundedTupleReader)(nil)
 	_ storage.TupleIterator           = (*countingTupleIterator)(nil)
+	_ adapter.Rows                    = (*boundedRows)(nil)
 
 	concurrentReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
@@ -69,6 +73,47 @@ var (
 	}, []string{"operation", "method"})
 )
 
+type boundedQuerier struct {
+	*BoundedTupleReader
+	adapter.Querier
+}
+
+// Execute holds the concurrency slot until the returned Rows are drained or closed, since they
+// retain the connection.
+func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
+	if err := q.bound(ctx, "Querier"); err != nil {
+		return nil, err
+	}
+	rows, err := q.Querier.Execute(ctx, stmt)
+	if err != nil {
+		q.done()
+		return nil, err
+	}
+	return &boundedRows{Rows: rows, release: q.done, counter: &q.countItems}, nil
+}
+
+type boundedRows struct {
+	adapter.Rows
+	release func()
+	once    sync.Once
+	counter *atomic.Uint64
+}
+
+func (r *boundedRows) Next() bool {
+	ok := r.Rows.Next()
+	if !ok {
+		r.once.Do(r.release)
+		return false
+	}
+	r.counter.Add(1)
+	return true
+}
+
+func (r *boundedRows) Close() error {
+	defer r.once.Do(r.release)
+	return r.Rows.Close()
+}
+
 type BoundedTupleReader struct {
 	storage.RelationshipTupleReader
 	limiter    chan struct{} // bound concurrency
@@ -83,8 +128,9 @@ type BoundedTupleReader struct {
 }
 
 // NewBoundedTupleReader returns a wrapper over a datastore that makes sure that there are, at most,
-// "concurrency" concurrent calls to Read, ReadUserTuple and ReadUsersetTuples.
+// op.Concurrency concurrent calls to Read, ReadUserTuple, ReadUsersetTuples, and Querier.Execute.
 // Consumers can then rest assured that one client will not hoard all the database connections available.
+// If op.ThrottlingEnabled, calls beyond op.ThrottleThreshold additionally incur op.ThrottleDuration of latency.
 func NewBoundedTupleReader(wrapped storage.RelationshipTupleReader, op *Operation) *BoundedTupleReader {
 	return &BoundedTupleReader{
 		RelationshipTupleReader: wrapped,
@@ -104,6 +150,15 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 		DatastoreItemCount:  b.countItems.Load(),
 		WasThrottled:        b.throttled.Load(),
 	}
+}
+
+// Querier returns a concurrency-bounded Querier, or nil if the delegate's is nil.
+func (b *BoundedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	inner := b.RelationshipTupleReader.Querier(consistency)
+	if inner == nil {
+		return nil
+	}
+	return &boundedQuerier{b, inner}
 }
 
 // ReadUserTuple tries to return one tuple that matches the provided key exactly.
