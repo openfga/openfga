@@ -845,3 +845,45 @@ func TestRemoteOidcAuthenticator_TokenWithoutKid(t *testing.T) {
 		require.Equal(t, errInvalidClaims, err)
 	})
 }
+
+// TestRemoteOidcAuthenticator_TokenWithoutKidIgnoresEncryptionKeys verifies that a key marked for
+// encryption in the JWKS is not used to verify a token without a `kid`, the same as for a token
+// that names the key.
+func TestRemoteOidcAuthenticator_TokenWithoutKidIgnoresEncryptionKeys(t *testing.T) {
+	withRealFetchJWK(t)
+
+	encPrivateKey, encPublicKey := generateJWTSignatureKeys()
+	sigPrivateKey, sigPublicKey := generateJWTSignatureKeys()
+
+	encJWK := rsaPublicKeyToJWK("enc_key", encPublicKey)
+	encJWK["use"] = "enc"
+	delete(encJWK, "alg")
+	sigJWK := rsaPublicKeyToJWK("sig_key", sigPublicKey)
+
+	mux := http.NewServeMux()
+	var server *httptest.Server
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{encJWK, sigJWK}})
+	})
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"issuer": server.URL, "jwks_uri": server.URL + "/jwks"})
+	})
+	server = httptest.NewServer(mux)
+	defer server.Close()
+
+	authenticator, err := NewRemoteOidcAuthenticator(server.URL, nil, "aud", nil, nil)
+	require.NoError(t, err)
+	defer authenticator.Close()
+
+	claims := func() jwt.MapClaims {
+		return jwt.MapClaims{"iss": server.URL, "aud": "aud", "exp": time.Now().Add(10 * time.Minute).Unix()}
+	}
+
+	_, err = authenticator.Authenticate(generateContext(generateJWTWithoutKid(t, sigPrivateKey, claims())))
+	require.NoError(t, err)
+
+	_, err = authenticator.Authenticate(generateContext(generateJWTWithoutKid(t, encPrivateKey, claims())))
+	require.Equal(t, errInvalidClaims, err)
+}
