@@ -106,9 +106,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 
 	jwtParser := jwt.NewParser(options...)
 
-	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
-		return oidc.JWKs.Keyfunc(token)
-	})
+	token, err := jwtParser.Parse(authHeader, oidc.verificationKeys)
 	if err != nil || !token.Valid {
 		return nil, errInvalidClaims
 	}
@@ -177,6 +175,26 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	}
 
 	return principal, nil
+}
+
+// verificationKeys returns the key, or the keys, that may have signed the token. A token with a `kid`
+// header is matched to the key with that ID. Some identity providers issue tokens without a `kid`;
+// for those, every key of the JWKS is returned and the token is accepted if any of them verifies it.
+func (oidc *RemoteOidcAuthenticator) verificationKeys(token *jwt.Token) (any, error) {
+	kid, _ := token.Header["kid"].(string)
+	if kid != "" {
+		return oidc.JWKs.Keyfunc(token)
+	}
+
+	keys := oidc.JWKs.ReadOnlyKeys()
+	verificationKeys := make([]jwt.VerificationKey, 0, len(keys))
+	for _, key := range keys {
+		verificationKeys = append(verificationKeys, key)
+	}
+	if len(verificationKeys) == 0 {
+		return nil, errors.New("oidc: the JWT has no kid and the JWKS has no keys")
+	}
+	return jwt.VerificationKeySet{Keys: verificationKeys}, nil
 }
 
 func fetchJWK(oidc *RemoteOidcAuthenticator) error {

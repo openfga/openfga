@@ -765,3 +765,83 @@ func withRealFetchJWK(t *testing.T) {
 	fetchJWKs = fetchJWK
 	t.Cleanup(func() { fetchJWKs = prev })
 }
+
+// generateJWTWithoutKid generates a JSON Web Token that has no `kid` header.
+func generateJWTWithoutKid(t *testing.T, privateKey *rsa.PrivateKey, claims jwt.MapClaims) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	signedToken, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+	return signedToken
+}
+
+// TestRemoteOidcAuthenticator_TokenWithoutKid verifies that a JWT without a `kid` header is checked
+// against every key of the JWKS, and rejected when none of them verifies it.
+func TestRemoteOidcAuthenticator_TokenWithoutKid(t *testing.T) {
+	claims := func() jwt.MapClaims {
+		return jwt.MapClaims{
+			"iss":   "right_issuer",
+			"aud":   "right_audience",
+			"sub":   "some-user",
+			"scope": "read write",
+			"exp":   time.Now().Add(10 * time.Minute).Unix(),
+		}
+	}
+	privateKey1, publicKey1 := generateJWTSignatureKeys()
+	privateKey2, publicKey2 := generateJWTSignatureKeys()
+	otherPrivateKey, _ := generateJWTSignatureKeys()
+
+	newAuthenticator := func(t *testing.T) *RemoteOidcAuthenticator {
+		t.Helper()
+		original := fetchJWKs
+		t.Cleanup(func() { fetchJWKs = original })
+		fetchJWKs = func(oidc *RemoteOidcAuthenticator) error {
+			oidc.JWKs = keyfunc.NewGiven(map[string]keyfunc.GivenKey{
+				"kid_1": keyfunc.NewGivenCustom(publicKey1, keyfunc.GivenKeyOptions{Algorithm: "RS256"}),
+				"kid_2": keyfunc.NewGivenCustom(publicKey2, keyfunc.GivenKeyOptions{Algorithm: "RS256"}),
+			})
+			return nil
+		}
+		authenticator, err := NewRemoteOidcAuthenticator("right_issuer", nil, "right_audience", nil, nil)
+		require.NoError(t, err)
+		return authenticator
+	}
+
+	t.Run("accepts_a_token_signed_by_the_first_key", func(t *testing.T) {
+		authenticator := newAuthenticator(t)
+		authClaims, err := authenticator.Authenticate(generateContext(generateJWTWithoutKid(t, privateKey1, claims())))
+		require.NoError(t, err)
+		require.Equal(t, "some-user", authClaims.Subject)
+	})
+
+	t.Run("accepts_a_token_signed_by_the_second_key", func(t *testing.T) {
+		authenticator := newAuthenticator(t)
+		_, err := authenticator.Authenticate(generateContext(generateJWTWithoutKid(t, privateKey2, claims())))
+		require.NoError(t, err)
+	})
+
+	t.Run("accepts_a_token_with_an_empty_kid", func(t *testing.T) {
+		authenticator := newAuthenticator(t)
+		_, err := authenticator.Authenticate(generateContext(generateJWT(privateKey2, "", claims())))
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects_a_token_signed_by_a_key_that_is_not_in_the_JWKS", func(t *testing.T) {
+		authenticator := newAuthenticator(t)
+		_, err := authenticator.Authenticate(generateContext(generateJWTWithoutKid(t, otherPrivateKey, claims())))
+		require.Equal(t, errInvalidClaims, err)
+	})
+
+	t.Run("still_rejects_a_token_whose_kid_is_not_in_the_JWKS", func(t *testing.T) {
+		authenticator := newAuthenticator(t)
+		_, err := authenticator.Authenticate(generateContext(generateJWT(privateKey1, "unknown", claims())))
+		require.Equal(t, errInvalidClaims, err)
+	})
+
+	t.Run("rejects_a_token_without_kid_when_the_JWKS_has_no_keys", func(t *testing.T) {
+		authenticator := newAuthenticator(t)
+		authenticator.JWKs = keyfunc.NewGiven(map[string]keyfunc.GivenKey{})
+		_, err := authenticator.Authenticate(generateContext(generateJWTWithoutKid(t, privateKey1, claims())))
+		require.Equal(t, errInvalidClaims, err)
+	})
+}
