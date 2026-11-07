@@ -570,6 +570,10 @@ type sharedIterator struct {
 	// stopped is a value type because it is not shared between iterator instances.
 	stopped bool
 
+	// isClone indicates whether the current iterator instance was created by clone.
+	// Only clones are counted in the sharedIteratorCloneCount gauge.
+	isClone bool
+
 	// await ensures that only one goroutine can fetch items at a time.
 	// It is used to block until new items are available or the context is done.
 	await *await
@@ -626,10 +630,11 @@ func (s *sharedIterator) clone() *sharedIterator {
 	sharedIteratorCloneCount.Inc()
 
 	return &sharedIterator{
-		await: s.await,
-		ir:    s.ir,
-		state: s.state,
-		refs:  s.refs,
+		isClone: true,
+		await:   s.await,
+		ir:      s.ir,
+		state:   s.state,
+		refs:    s.refs,
 	}
 }
 
@@ -749,7 +754,9 @@ func (s *sharedIterator) Stop() {
 		if s.refs.Add(-1) == 0 {
 			s.ir.Stop()
 		}
-		sharedIteratorCloneCount.Dec()
+		if s.isClone {
+			sharedIteratorCloneCount.Dec()
+		}
 	}
 }
 
