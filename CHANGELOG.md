@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
 
 ### Fixed
+- Fixed `--max-concurrent-reads-for-check`, `--max-concurrent-reads-for-list-objects` and `--max-concurrent-reads-for-list-users` not limiting reads on the SQL datastores. SQL iterators run their query on the first `Next`/`Head`, after `BoundedTupleReader` had released its slot; the returned iterators now hold a slot during each `Next` and `Head` call. [#3326](https://github.com/openfga/openfga/issues/3326)
 - Improved error handling in graph evaluation and iterator processing.
 
 ## [1.22.1] - 2026-10-27
