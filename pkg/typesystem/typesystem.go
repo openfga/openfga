@@ -13,6 +13,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
@@ -1168,7 +1169,11 @@ func hasEntrypoints(
 //     b) For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
 func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
-	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
+	return newAndValidate(ctx, model, tracer)
+}
+
+func newAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel, typesystemTracer trace.Tracer) (*TypeSystem, error) {
+	_, span := typesystemTracer.Start(ctx, "typesystem.NewAndValidate")
 	defer span.End()
 
 	// Build the TypeSystem without constructing the graphs, so validation can run before the
