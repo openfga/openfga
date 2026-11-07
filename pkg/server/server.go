@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -256,6 +257,8 @@ type Server struct {
 	requestTimeout time.Duration
 
 	sharedResourceOptions []shared.SharedDatastoreResourcesOpt
+
+	closeOnce sync.Once
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -1037,8 +1040,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	return s, nil
 }
 
-// Close releases the server resources.
+// Close releases the server resources. It is safe to call more than once.
 func (s *Server) Close() {
+	s.closeOnce.Do(s.closeResources)
+}
+
+func (s *Server) closeResources() {
 	if s.planner != nil {
 		s.planner.Stop()
 	}
