@@ -1479,6 +1479,18 @@ func (t *TypeSystem) validateConditions() error {
 			return fmt.Errorf("condition key '%s' does not match condition name '%s'", key, c.Name)
 		}
 
+		if c.Name == "" {
+			return fmt.Errorf("a condition name cannot be an empty string: %w", ErrInvalidModel)
+		}
+
+		if c.Name == "self" || c.Name == "this" {
+			return fmt.Errorf("condition '%s' is invalid: %w", c.Name, ErrReservedKeywords)
+		}
+
+		if condition.IsInlineExpression(c.Name) {
+			return fmt.Errorf("condition name '%s' is reserved for inline expressions: %w", c.Name, ErrInvalidModel)
+		}
+
 		if err := c.Compile(); err != nil {
 			return err
 		}
