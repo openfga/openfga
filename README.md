@@ -68,7 +68,7 @@ It helps developers easily model and enforce fine-grained access control in thei
 Run OpenFGA with in-memory storage (⚠️ **not for production**):
 
 ```shell
-docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
+docker run -p 8080:8080 openfga/openfga run
 ```
 
 Once running, create a store:
@@ -88,7 +88,7 @@ in-memory datastore by running the following commands:
 
 ```shell
 docker pull openfga/openfga
-docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
+docker run -p 8080:8080 openfga/openfga run
 ```
 
 > [!NOTE]
@@ -169,36 +169,27 @@ If everything is running correctly, you should get a response with information a
 ## Playground
 
 The Playground lets you model, visualize, and test authorization setups.
-By default, it’s available at: [http://localhost:3000/playground](http://localhost:3000/playground)
 
-> [!NOTE]  
-> The Playground is intended for **local development only**.  
-> It can currently only be configured to connect to an OpenFGA server running on `localhost`.
+> [!WARNING]  
+> The built-in Playground is **deprecated**, **disabled by default**, and intended for **local development only**.  
+> Current browsers may block it from reaching your local server. For modeling and testing, prefer the
+> [CLI](https://github.com/openfga/cli) and the [VS Code extension](https://github.com/openfga/vscode-ext).
 
-Disable it with:
-
-```shell
-./openfga run --playground-enabled=false
-```
-
-Change port:
+Enable it with:
 
 ```shell
-./openfga run --playground-enabled --playground-port 3001
+./openfga run --playground-enabled
 ```
 
-> [!TIP]
-> The `OPENFGA_HTTP_ADDR` environment variable can be used to configure the address at which the Playground expects the OpenFGA server to be.
->
-> For example:
->
-> ```shell
-> docker run -e OPENFGA_PLAYGROUND_ENABLED=true \
-> -e OPENFGA_HTTP_ADDR=0.0.0.0:4000 \
-> -p 4000:4000 -p 3000:3000 openfga/openfga run
-> ```
->
-> This starts OpenFGA on port 4000 and configures the Playground accordingly.
+When running in Docker, also set the Playground address so it is reachable from outside the container:
+
+```shell
+docker run -p 8080:8080 -p 3000:3000 openfga/openfga run \
+  --playground-enabled --playground-addr 0.0.0.0:3000
+```
+
+Then open [http://localhost:3000/playground](http://localhost:3000/playground).
+If your browser blocks it, see [Using the Playground](https://openfga.dev/docs/getting-started/setup-openfga/playground).
 
 ## Next Steps
 
