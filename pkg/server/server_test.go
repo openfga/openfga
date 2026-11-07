@@ -344,6 +344,31 @@ func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t
 		)
 	})
 }
+
+func TestServerCloseIsIdempotent(t *testing.T) {
+	tests := map[string][]OpenFGAServiceV1Option{
+		"default_options": nil,
+		"dispatch_throttling_enabled": {
+			WithListObjectsDispatchThrottlingEnabled(true),
+			WithListUsersDispatchThrottlingEnabled(true),
+		},
+	}
+
+	for name, opts := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Cleanup(func() {
+				goleak.VerifyNone(t)
+			})
+			s := MustNewServerWithOpts(append(opts, WithDatastore(memory.New()))...)
+
+			require.NotPanics(t, func() {
+				s.Close()
+				s.Close()
+			})
+		})
+	}
+}
+
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
