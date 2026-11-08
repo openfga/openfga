@@ -13,6 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
+- `failed to set grpc header` is now logged at debug instead of error when the client has already cancelled or disconnected, since the closed stream cannot take the header. It was logged for every such Check or BatchCheck. See `pkg/gateway/transport.go`. [#2454](https://github.com/openfga/openfga/issues/2454)
 
 ## [1.22.1] - 2026-10-27
 ### Changed

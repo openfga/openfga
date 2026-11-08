@@ -43,14 +43,21 @@ func NewRPCTransport(l logger.Logger) *RPCTransport {
 	return &RPCTransport{logger: l}
 }
 
-// SetHeader tries to set a header. If an error occurred, it logs an error.
+// SetHeader tries to set a header. If an error occurred, it logs an error,
+// unless the request context is already done: the client has cancelled or
+// disconnected, so the stream is closed and nothing is left to receive the
+// header. That case is logged at debug level.
 func (g *RPCTransport) SetHeader(ctx context.Context, key, value string) {
-	if err := grpc.SetHeader(ctx, metadata.Pairs(key, value)); err != nil {
-		g.logger.ErrorWithContext(
-			ctx,
-			"failed to set grpc header",
-			zap.Error(err),
-			zap.String("header", key),
-		)
+	err := grpc.SetHeader(ctx, metadata.Pairs(key, value))
+	if err == nil {
+		return
 	}
+
+	fields := []zap.Field{zap.Error(err), zap.String("header", key)}
+	if ctx.Err() != nil {
+		g.logger.DebugWithContext(ctx, "failed to set grpc header", append(fields, zap.NamedError("context_error", ctx.Err()))...)
+		return
+	}
+
+	g.logger.ErrorWithContext(ctx, "failed to set grpc header", fields...)
 }
