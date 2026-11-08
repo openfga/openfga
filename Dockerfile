@@ -1,6 +1,6 @@
 FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.61@sha256:9df7b8dfbaf01d20eaedcd6de084c557074046f87cfc0413b7939ae18087c249 AS grpc_health_probe
 # Please manually update the Dockerfile.goreleaser whenever the grpc health probe is updated
-FROM cgr.dev/chainguard/go:1.27.3@sha256:c81d42afe2d9f5728a63998d93340553b46b0a8f149888527f1ab9deb3dfa9ef AS builder
+FROM cgr.dev/chainguard/go:latest@sha256:135d3f59bd1ad5093d831f430bd29f31e753aac2fe9d88c08e849bb3f019aa03 AS builder
 
 WORKDIR /app
 
@@ -11,10 +11,15 @@ RUN --mount=type=cache,target=/root/go/pkg/mod \
     go mod download -x
 
 # build with cache
+# The builder image is tracked as :latest, so its Go can be newer than the
+# toolchain in go.mod. Pin GOTOOLCHAIN to the go.mod toolchain line so the
+# release binary is built with the same Go version that CI tests with.
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/root/go/pkg/mod \
     --mount=type=bind,target=. \
-    CGO_ENABLED=0 go build -o /bin/openfga ./cmd/openfga
+    toolchain=$(go mod edit -print | awk '/^toolchain / { found = 1; print $2 } END { exit !found }') \
+    || { echo 'no toolchain line found in go.mod' >&2; exit 1; }; \
+    GOTOOLCHAIN=$toolchain CGO_ENABLED=0 go build -o /bin/openfga ./cmd/openfga
 
 FROM cgr.dev/chainguard/static@sha256:fc42af33e643f20d08baf03cddcc1c02ba57052dfb02edb0d79f3fc47bcea8d9
 
