@@ -107,6 +107,13 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	jwtParser := jwt.NewParser(options...)
 
 	token, err := jwtParser.Parse(authHeader, oidc.verificationKeys)
+	if err != nil && tokenHasNoKid(authHeader) {
+		// A token without a kid never reaches the unknown-kid refresh of the JWKS, so after a key
+		// rotation it would fail until the next scheduled refresh. Refresh here (rate limited) and retry once.
+		if refreshErr := oidc.JWKs.Refresh(context.Background(), keyfunc.RefreshOptions{}); refreshErr == nil {
+			token, err = jwtParser.Parse(authHeader, oidc.verificationKeys)
+		}
+	}
 	if err != nil || !token.Valid {
 		return nil, errInvalidClaims
 	}
@@ -202,6 +209,15 @@ func (oidc *RemoteOidcAuthenticator) verificationKeys(token *jwt.Token) (any, er
 		return nil, errors.New("oidc: the JWT has no kid and the JWKS has no key that can verify it")
 	}
 	return jwt.VerificationKeySet{Keys: verificationKeys}, nil
+}
+
+func tokenHasNoKid(rawToken string) bool {
+	token, _, err := jwt.NewParser().ParseUnverified(rawToken, jwt.MapClaims{})
+	if err != nil {
+		return false
+	}
+	kid, _ := token.Header["kid"].(string)
+	return kid == ""
 }
 
 func fetchJWK(oidc *RemoteOidcAuthenticator) error {
