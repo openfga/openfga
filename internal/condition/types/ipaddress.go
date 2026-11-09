@@ -5,10 +5,10 @@ import (
 	"net/netip"
 	"reflect"
 
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/common/types/ref"
-	"github.com/google/cel-go/common/types/traits"
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common/types"
+	"cel.dev/cel-go/common/types/ref"
+	"cel.dev/cel-go/common/types/traits"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
@@ -73,7 +73,7 @@ var ipaddrCelType = cel.ObjectType("IPAddress", traits.ReceiverType)
 
 // ConvertToNative implements the CEL ref.Val.ConvertToNative.
 //
-// See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
+// See https://pkg.go.dev/cel.dev/cel-go/common/types/ref#Val
 func (ip IPAddress) ConvertToNative(typeDesc reflect.Type) (any, error) {
 	if reflect.TypeOf(ip).AssignableTo(typeDesc) {
 		return ip, nil
@@ -89,7 +89,7 @@ func (ip IPAddress) ConvertToNative(typeDesc reflect.Type) (any, error) {
 
 // ConvertToType implements the CEL ref.Val.ConvertToType.
 //
-// See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
+// See https://pkg.go.dev/cel.dev/cel-go/common/types/ref#Val
 func (ip IPAddress) ConvertToType(typeValue ref.Type) ref.Val {
 	switch typeValue {
 	case types.StringType:
@@ -103,7 +103,7 @@ func (ip IPAddress) ConvertToType(typeValue ref.Type) ref.Val {
 
 // Equal implements the CEL ref.Val.Equal.
 //
-// See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
+// See https://pkg.go.dev/cel.dev/cel-go/common/types/ref#Val
 func (ip IPAddress) Equal(other ref.Val) ref.Val {
 	otherip, ok := other.(IPAddress)
 	if !ok {
@@ -115,14 +115,14 @@ func (ip IPAddress) Equal(other ref.Val) ref.Val {
 
 // Type implements the CEL ref.Val.Type.
 //
-// See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
+// See https://pkg.go.dev/cel.dev/cel-go/common/types/ref#Val
 func (ip IPAddress) Type() ref.Type {
 	return ipaddrCelType
 }
 
 // Value implements ref.Val.Value.
 //
-// See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
+// See https://pkg.go.dev/cel.dev/cel-go/common/types/ref#Val
 func (ip IPAddress) Value() any {
 	return ip
 }
@@ -131,7 +131,7 @@ func (ip IPAddress) Value() any {
 // comparing an ipaddress value against a network CIDR defined as a string. If the ipaddress is
 // within the CIDR range this binding will return true, otherwise it will return false or an error.
 //
-// See https://pkg.go.dev/github.com/google/cel-go/cel#BinaryBinding
+// See https://pkg.go.dev/cel.dev/cel-go/cel#BinaryBinding
 func ipaddressCELBinaryBinding(lhs, rhs ref.Val) ref.Val {
 	cidr, ok := rhs.Value().(string)
 	if !ok {

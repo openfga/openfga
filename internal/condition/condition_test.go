@@ -63,7 +63,7 @@ func TestNewCompiled(t *testing.T) {
 			},
 			err: &condition.CompilationError{
 				Condition: "condition1",
-				Cause:     fmt.Errorf("ERROR: condition1:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
+				Cause:     fmt.Errorf("ERROR: condition1:1:1: undeclared reference to 'invalid'\n | invalid\n | ^"),
 			},
 		},
 		{
