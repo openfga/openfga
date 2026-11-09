@@ -669,6 +669,39 @@ func TestRemoteOidcAuthenticator_TokenWithoutKidRefreshesAfterRotation(t *testin
 	require.Greater(t, server.hits(), hitsBeforeAuth, "JWKS endpoint should have been re-fetched")
 }
 
+// TestRemoteOidcAuthenticator_TokenWithoutKidCanceledRequest verifies that a request that is already
+// canceled does not trigger a JWKS refresh.
+func TestRemoteOidcAuthenticator_TokenWithoutKidCanceledRequest(t *testing.T) {
+	withRealFetchJWK(t)
+
+	_, pubKey1 := generateJWTSignatureKeys()
+	privKey2, pubKey2 := generateJWTSignatureKeys()
+
+	server := newJWKSTestServer(map[string]*rsa.PublicKey{"kid_1": pubKey1})
+	defer server.close()
+
+	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, "aud", nil, nil)
+	require.NoError(t, err)
+	defer oidc.Close()
+
+	server.setKey("kid_2", pubKey2)
+	hitsBeforeAuth := server.hits()
+
+	token := generateJWTWithoutKid(t, privKey2, jwt.MapClaims{
+		"iss": server.server.URL,
+		"aud": "aud",
+		"sub": "some-user",
+		"exp": time.Now().Add(10 * time.Minute).Unix(),
+	})
+
+	ctx, cancel := context.WithCancel(generateContext(token))
+	cancel()
+
+	_, err = oidc.Authenticate(ctx)
+	require.Error(t, err)
+	require.Equal(t, hitsBeforeAuth, server.hits(), "a canceled request should not refresh the JWKS")
+}
+
 // TestRemoteOidcAuthenticator_RefreshRateLimit verifies that a burst of JWTs
 // with different unknown kids triggers at most one JWKS refresh within the
 // rate-limit window.

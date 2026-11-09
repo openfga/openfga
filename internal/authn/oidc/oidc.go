@@ -107,10 +107,10 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	jwtParser := jwt.NewParser(options...)
 
 	token, err := jwtParser.Parse(authHeader, oidc.verificationKeys)
-	if err != nil && tokenHasNoKid(authHeader) {
+	if err != nil && tokenHasNoKid(authHeader) && requestContext.Err() == nil {
 		// A token without a kid never reaches the unknown-kid refresh of the JWKS, so after a key
 		// rotation it would fail until the next scheduled refresh. Refresh here (rate limited) and retry once.
-		if refreshErr := oidc.JWKs.Refresh(context.Background(), keyfunc.RefreshOptions{}); refreshErr == nil {
+		if refreshErr := oidc.JWKs.Refresh(requestContext, keyfunc.RefreshOptions{}); refreshErr == nil {
 			token, err = jwtParser.Parse(authHeader, oidc.verificationKeys)
 		}
 	}
