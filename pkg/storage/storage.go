@@ -135,7 +135,9 @@ type ReadUsersetTuplesOptions struct {
 // ReadStartingWithUserOptions represents the options that can
 // be used with the ReadStartingWithUser method.
 type ReadStartingWithUserOptions struct {
-	Consistency                ConsistencyOptions
+	Consistency ConsistencyOptions
+	// WithResultsSortedAscending orders the results by object ID. The same object can appear more than once, e.g. for a
+	// user and for the public wildcard, so callers that need unique objects must deduplicate after filtering.
 	WithResultsSortedAscending bool
 }
 

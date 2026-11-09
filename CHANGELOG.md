@@ -9,8 +9,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - Added a typed query AST and a `Querier` interface so backends can run queries as structured statements instead of hand-built SQL. This lays the groundwork for future SQL optimizations. [#3316](https://github.com/openfga/openfga/pull/3316)
-  - **Breaking change:** This only applies if you use openfga as a library and implement a custom `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL optimizations.
+  - **Breaking change:** This only applies if you use openfga as a library **and** implement a custom `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL optimizations.
 - Implemented the `Querier` interface for SQLite. [#3322](https://github.com/openfga/openfga/pull/3322)
+
+### Changed
+- Moved the CEL dependency from `github.com/google/cel-go` to its new module path `cel.dev/cel-go` (v0.33.2), as the upstream project has relocated to `github.com/cel-expr/cel-go`. Condition compilation errors no longer end with ` (in container '')`. [#3391](https://github.com/openfga/openfga/pull/3391)
+- Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
+
+### Fixed
+- Improved error handling in graph evaluation and iterator processing.
 
 ## [1.22.1] - 2026-10-27
 ### Changed

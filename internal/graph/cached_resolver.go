@@ -197,6 +197,10 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return resp, nil
 	}
 
+	if ctx.Err() != nil {
+		return resp, nil
+	}
+
 	clonedResp := resp.clone()
 
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, storage.JitteredTTL(c.cacheTTL, c.jitterPercentage))

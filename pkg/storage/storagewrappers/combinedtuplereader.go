@@ -193,8 +193,26 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 	}
 
 	if options.WithResultsSortedAscending {
+		// A contextual tuple shadows a stored one for the same object and user, as ReadUserTuple does. Wildcards are not shadowed,
+		// and a user's and the wildcard's tuples must both be returned: each one's condition decides, and the caller evaluates it.
+		if len(filteredTuples) > 0 { // most requests have no contextual tuples: avoid the allocation
+			type objectUser struct{ object, user string }
+			shadowed := make(map[objectUser]struct{}, len(filteredTuples))
+			for _, t := range filteredTuples {
+				if !tuple.IsTypedWildcard(t.GetKey().GetUser()) {
+					shadowed[objectUser{t.GetKey().GetObject(), t.GetKey().GetUser()}] = struct{}{}
+				}
+			}
+			if len(shadowed) > 0 {
+				iter2 = storage.NewKeepTupleIterator(iter2, func(t *openfgav1.Tuple) bool {
+					_, ok := shadowed[objectUser{t.GetKey().GetObject(), t.GetKey().GetUser()}]
+					return !ok
+				})
+			}
+		}
+
 		// Note that both iter1 and iter2 return sorted by object ID
-		return storage.NewOrderedCombinedIterator(storage.ObjectMapper(), iter1, iter2), nil
+		return storage.NewOrderedMergeIterator(storage.ObjectMapper(), iter1, iter2), nil
 	}
 
 	return storage.NewCombinedIterator(iter1, iter2), nil
