@@ -15,6 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Moved the CEL dependency from `github.com/google/cel-go` to its new module path `cel.dev/cel-go` (v0.33.2), as the upstream project has relocated to `github.com/cel-expr/cel-go`. Condition compilation errors no longer end with ` (in container '')`. [#3391](https://github.com/openfga/openfga/pull/3391)
 - Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
+- `Querier` statements now ignore client cancellation and client deadlines, so a cancelled request doesn't abort an in-flight query and churn database connections. Instead they are bounded by `--request-timeout`, covering both execution and reading the rows. This applies unless `--context-propagation-to-datastore` is enabled.
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.

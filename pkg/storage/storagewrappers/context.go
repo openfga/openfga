@@ -2,10 +2,14 @@ package storagewrappers
 
 import (
 	"context"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
+	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
 // ContextTracerWrapper is a wrapper for a datastore that introduces a new context to the underlying datastore methods.
@@ -14,14 +18,34 @@ import (
 // original context is cancelled, helping to avoid unnecessary database connection churn.
 type ContextTracerWrapper struct {
 	storage.OpenFGADatastore
+	queryTimeout time.Duration
 }
 
 var _ storage.OpenFGADatastore = (*ContextTracerWrapper)(nil)
 
+type ContextTracerWrapperOpt func(*ContextTracerWrapper)
+
+// WithContextWrapperQueryTimeout sets how long a Querier statement, including reading its rows, may run before
+// its context is cancelled. Values <= 0 are ignored, leaving the default of [config.DefaultRequestTimeout].
+func WithContextWrapperQueryTimeout(timeout time.Duration) ContextTracerWrapperOpt {
+	return func(c *ContextTracerWrapper) {
+		if timeout > 0 {
+			c.queryTimeout = timeout
+		}
+	}
+}
+
 // NewContextWrapper creates a new instance of [ContextTracerWrapper], wrapping the specified datastore. It is crucial
 // for [ContextTracerWrapper] to be the first wrapper around the datastore for traces to function correctly.
-func NewContextWrapper(inner storage.OpenFGADatastore) *ContextTracerWrapper {
-	return &ContextTracerWrapper{inner}
+func NewContextWrapper(inner storage.OpenFGADatastore, opts ...ContextTracerWrapperOpt) *ContextTracerWrapper {
+	c := &ContextTracerWrapper{
+		OpenFGADatastore: inner,
+		queryTimeout:     config.DefaultRequestTimeout,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // queryContext generates a new context that is independent of the provided
@@ -33,6 +57,51 @@ func queryContext(ctx context.Context) context.Context {
 // Close ensures proper cleanup and closure of resources associated with the OpenFGADatastore.
 func (c *ContextTracerWrapper) Close() {
 	c.OpenFGADatastore.Close()
+}
+
+// Querier see [storage.RelationshipTupleReader].Querier. Statements ignore the request's cancellation and
+// deadline, and are instead bounded by the wrapper's query timeout.
+func (c *ContextTracerWrapper) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	inner := c.OpenFGADatastore.Querier(consistency)
+	if inner == nil {
+		return nil
+	}
+	return &contextQuerier{Querier: inner, timeout: c.queryTimeout}
+}
+
+type contextQuerier struct {
+	adapter.Querier
+	timeout time.Duration
+}
+
+// Execute holds the timeout's context until the returned Rows are exhausted or closed, since cancelling it
+// earlier would abort the rows.
+func (q *contextQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
+	queryCtx, cancel := context.WithTimeout(queryContext(ctx), q.timeout)
+	rows, err := q.Querier.Execute(queryCtx, stmt)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return &contextRows{Rows: rows, cancel: cancel}, nil
+}
+
+type contextRows struct {
+	adapter.Rows
+	cancel context.CancelFunc
+}
+
+func (r *contextRows) Next() bool {
+	ok := r.Rows.Next()
+	if !ok {
+		r.cancel()
+	}
+	return ok
+}
+
+func (r *contextRows) Close() error {
+	defer r.cancel()
+	return r.Rows.Close()
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
