@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
@@ -1366,6 +1367,12 @@ func (r *recordingTransport) header(key string) string {
 	return r.headers[key]
 }
 
+func (r *recordingTransport) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.headers = nil
+}
+
 func NewMockStreamServer(ctx context.Context) *mockStreamServer {
 	return &mockStreamServer{
 		ctx: ctx,
@@ -2013,6 +2020,7 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
 		WithTransport(transport),
+		WithExperimentals(serverconfig.ExperimentalAuthZen),
 
 		WithListObjectsPipelineEnabled(false),
 		WithDispatchThrottlingCheckResolverEnabled(true),
@@ -2081,12 +2089,27 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 		require.Equal(t, []string{WarningDeadlineExceeded}, srv.trailer.Get(WarningHeader))
 	})
 
+	t.Run("resource_search_return_no_error_and_warning_header", func(t *testing.T) {
+		transport.reset()
+		resp, err := s.ResourceSearch(ctx, &authzenv1.ResourceSearchRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "tyler"},
+			Action:   &authzenv1.Action{Name: "viewer"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
+	})
+
 	t.Run("pipeline_return_no_error_and_warning", func(t *testing.T) {
 		transport := &recordingTransport{}
 		slowDS := mockstorage.NewMockSlowDataStorage(ds, 3*deadline) // No read completes before the deadline
 		s := MustNewServerWithOpts(
 			WithDatastore(slowDS),
 			WithTransport(transport),
+			WithExperimentals(serverconfig.ExperimentalPipelineListObjects),
 			WithListObjectsPipelineEnabled(true),
 			WithListObjectsDeadline(deadline),
 		)
@@ -2121,6 +2144,7 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
 				WithTransport(transport),
+				WithExperimentals(serverconfig.ExperimentalPipelineListObjects),
 				WithListObjectsPipelineEnabled(pipelineEnabled),
 			)
 			t.Cleanup(s.Close)
