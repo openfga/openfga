@@ -178,6 +178,12 @@ type TypeSystem struct {
 
 	computedRelations sync.Map
 
+	// pathExistsCache memoizes PathExists. The answer depends only on the model graph and on
+	// (user type or userset, relation, object type), and the model is immutable, so a result
+	// is valid for the TypeSystem's lifetime. Keys are bounded by the model's types and
+	// relations, not by user or object IDs. Keys are pathExistsKey values.
+	pathExistsCache sync.Map
+
 	modelID                 string
 	schemaVersion           string
 	authorizationModelGraph *graph.AuthorizationModelGraph
@@ -748,6 +754,8 @@ func (t *TypeSystem) UsersetUseRecursiveResolver(objectType, relation, userType 
 // - the `user` type is a subject e.g. `user`, and there is a path from `user` to `objectType#relation`, or there is a path from `user:*` to `objectType#relation`
 // or
 // - the `user` type is a userset e.g. `group#member`, and there is a path from `group#member` to `objectType#relation`.
+//
+// Results are memoized per TypeSystem; only results without an error are cached.
 func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error) {
 	userType, _, userRelation := tuple.ToUserParts(user)
 	isUserset := userRelation != ""
@@ -755,10 +763,35 @@ func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error)
 	if isUserset {
 		userTypeRelation = tuple.ToObjectRelationString(userType, userRelation)
 	}
+	toLabel := tuple.ToObjectRelationString(objectType, relation)
 
+	cacheKey := pathExistsKey{from: userTypeRelation, to: toLabel}
+	if cached, ok := t.pathExistsCache.Load(cacheKey); ok {
+		return cached.(bool), nil
+	}
+
+	exists, err := t.pathExists(userType, userTypeRelation, toLabel, isUserset)
+	if err != nil {
+		return false, err
+	}
+	t.pathExistsCache.Store(cacheKey, exists)
+	return exists, nil
+}
+
+// pathExistsKey identifies one PathExists question. The two labels are kept as separate fields
+// because type and relation names may contain any character except `:`, `#`, `@` and whitespace,
+// so no delimiter can join them without collisions.
+type pathExistsKey struct {
+	from string // user type, such as `user`, or userset, such as `group#member`
+	to   string // `objectType#relation`
+}
+
+// pathExists is PathExists without the cache. It searches the model graph for a path from
+// userTypeRelation (a user type such as `user`, or a userset such as `group#member`) to toLabel
+// (`objectType#relation`). For a user type, it also tries the type's public wildcard.
+func (t *TypeSystem) pathExists(userType, userTypeRelation, toLabel string, isUserset bool) (bool, error) {
 	// first check
 	fromLabel := userTypeRelation
-	toLabel := tuple.ToObjectRelationString(objectType, relation)
 	normalPathExists, err := t.authorizationModelGraph.PathExists(fromLabel, toLabel)
 	if err != nil {
 		return false, err
