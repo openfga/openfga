@@ -2,6 +2,7 @@ package sharediterator
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -146,6 +147,14 @@ func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 	s.idleTimer.Reset(s.idleDuration)
 
 	return clone, created, s.err
+}
+
+// isOtherCallersContextError reports whether err, returned by unwrap, is a context error that
+// belongs to a different caller. The producer runs with the context of whichever caller
+// created the storage item, and every concurrent caller receives its error; if that context
+// ended while ctx is still live, the caller should read without the shared iterator instead.
+func isOtherCallersContextError(ctx context.Context, err error) bool {
+	return ctx.Err() == nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
 type DatastoreStorageOpt func(*Storage)
@@ -312,6 +321,10 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem)
+		if isOtherCallersContextError(ctx, err) {
+			sharedIteratorBypassed.WithLabelValues(storage.OperationReadStartingWithUser).Inc()
+			return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+		}
 		return nil, err
 	}
 
@@ -393,6 +406,10 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem)
+		if isOtherCallersContextError(ctx, err) {
+			sharedIteratorBypassed.WithLabelValues(storage.OperationReadUsersetTuples).Inc()
+			return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
+		}
 		return nil, err
 	}
 
@@ -472,6 +489,10 @@ func (sf *IteratorDatastore) Read(
 	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem)
+		if isOtherCallersContextError(ctx, err) {
+			sharedIteratorBypassed.WithLabelValues(storage.OperationRead).Inc()
+			return sf.RelationshipTupleReader.Read(ctx, store, filter, options)
+		}
 		return nil, err
 	}
 

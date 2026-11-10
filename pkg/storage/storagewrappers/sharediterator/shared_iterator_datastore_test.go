@@ -1931,3 +1931,129 @@ func TestSharedIterator_ManyTuples(t *testing.T) {
 		}
 	})
 }
+
+// A cancelled first caller must not leak its context error to concurrent callers sharing
+// the same iterator: the producer runs with the first caller's context, and every caller
+// waiting on it receives the producer's error.
+func TestSharedIteratorDatastore_ProducerCancellationDoesNotLeak(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	storeID := ulid.Make().String()
+	tuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:1"), Timestamp: timestamppb.New(time.Now())},
+	}
+
+	readFilter := storage.ReadFilter{Object: "document:1", Relation: "viewer"}
+	usersetFilter := storage.ReadUsersetTuplesFilter{Object: "document:1", Relation: "viewer"}
+	startingWithUserFilter := storage.ReadStartingWithUserFilter{
+		ObjectType: "document",
+		Relation:   "viewer",
+		UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+	}
+
+	tests := []struct {
+		name   string
+		expect func(m *mocks.MockOpenFGADatastore, first func(ctx context.Context) error)
+		read   func(ctx context.Context, ds *IteratorDatastore) (storage.TupleIterator, error)
+	}{
+		{
+			name: "Read",
+			expect: func(m *mocks.MockOpenFGADatastore, first func(ctx context.Context) error) {
+				gomock.InOrder(
+					m.EXPECT().Read(gomock.Any(), storeID, readFilter, storage.ReadOptions{}).
+						DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+							return nil, first(ctx)
+						}),
+					m.EXPECT().Read(gomock.Any(), storeID, readFilter, storage.ReadOptions{}).
+						Return(storage.NewStaticTupleIterator(tuples), nil),
+				)
+			},
+			read: func(ctx context.Context, ds *IteratorDatastore) (storage.TupleIterator, error) {
+				return ds.Read(ctx, storeID, readFilter, storage.ReadOptions{})
+			},
+		},
+		{
+			name: "ReadUsersetTuples",
+			expect: func(m *mocks.MockOpenFGADatastore, first func(ctx context.Context) error) {
+				gomock.InOrder(
+					m.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, usersetFilter, storage.ReadUsersetTuplesOptions{}).
+						DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+							return nil, first(ctx)
+						}),
+					m.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, usersetFilter, storage.ReadUsersetTuplesOptions{}).
+						Return(storage.NewStaticTupleIterator(tuples), nil),
+				)
+			},
+			read: func(ctx context.Context, ds *IteratorDatastore) (storage.TupleIterator, error) {
+				return ds.ReadUsersetTuples(ctx, storeID, usersetFilter, storage.ReadUsersetTuplesOptions{})
+			},
+		},
+		{
+			name: "ReadStartingWithUser",
+			expect: func(m *mocks.MockOpenFGADatastore, first func(ctx context.Context) error) {
+				gomock.InOrder(
+					m.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, startingWithUserFilter, storage.ReadStartingWithUserOptions{}).
+						DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+							return nil, first(ctx)
+						}),
+					m.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, startingWithUserFilter, storage.ReadStartingWithUserOptions{}).
+						Return(storage.NewStaticTupleIterator(tuples), nil),
+				)
+			},
+			read: func(ctx context.Context, ds *IteratorDatastore) (storage.TupleIterator, error) {
+				return ds.ReadStartingWithUser(ctx, storeID, startingWithUserFilter, storage.ReadStartingWithUserOptions{})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+			ds := NewSharedIteratorDatastore(mockDatastore, NewSharedIteratorDatastoreStorage(),
+				WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+			// The first caller's read blocks until its context is cancelled, like a
+			// BoundedTupleReader waiting for a concurrency slot.
+			entered := make(chan struct{})
+			tt.expect(mockDatastore, func(ctx context.Context) error {
+				close(entered)
+				<-ctx.Done()
+				return ctx.Err()
+			})
+
+			firstCtx, cancelFirst := context.WithCancel(context.Background())
+			firstErr := make(chan error, 1)
+			go func() {
+				_, err := tt.read(firstCtx, ds)
+				firstErr <- err
+			}()
+			<-entered
+
+			type result struct {
+				iter storage.TupleIterator
+				err  error
+			}
+			second := make(chan result, 1)
+			go func() {
+				iter, err := tt.read(context.Background(), ds)
+				second <- result{iter, err}
+			}()
+			// Give the second caller time to join the in-flight shared item.
+			time.Sleep(50 * time.Millisecond)
+			cancelFirst()
+
+			require.ErrorIs(t, <-firstErr, context.Canceled)
+
+			got := <-second
+			require.NoError(t, got.err)
+			defer got.iter.Stop()
+			tk, err := got.iter.Next(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[0].GetKey().GetObject(), tk.GetKey().GetObject())
+		})
+	}
+}
