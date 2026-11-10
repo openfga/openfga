@@ -17,6 +17,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
+- Fixed `ListObjects` silently returning partial results when the ListObjects deadline truncated the evaluation: the response now carries an `X-Openfga-Warning: deadline-exceeded` header so callers can tell the results are incomplete. The truncation is also recorded as `DeadlineExceeded` on the ListObjects resolution metadata for the pipeline and fallback algorithms. [#3276](https://github.com/openfga/openfga/issues/3276)
 
 ## [1.22.1] - 2026-10-27
 ### Changed

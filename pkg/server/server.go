@@ -47,7 +47,13 @@ import (
 
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey    = "authorization_model_id"
+	// ListObjectsWarningHeader carries a warning about a ListObjects
+	// response on the gRPC/HTTP response headers. Its current value is
+	// ListObjectsDeadlineExceededWarning, set when the ListObjects
+	// deadline truncated the results.
+	ListObjectsWarningHeader           = "X-Openfga-Warning"
+	ListObjectsDeadlineExceededWarning = "deadline-exceeded"
+	authorizationModelIDKey            = "authorization_model_id"
 
 	allowedLabel = "allowed"
 

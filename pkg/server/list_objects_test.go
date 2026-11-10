@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -613,4 +614,90 @@ func listObjectsBreakingChangeCases() []listObjectsBreakingChangeCase {
 			wantReason:  "",
 		},
 	}
+}
+
+// recordingTransport captures the response headers the server sets through
+// its transport, mirroring what a gRPC client (or the HTTP gateway, which
+// forwards all gRPC headers) would observe.
+type recordingTransport struct {
+	mu      sync.Mutex
+	headers map[string]string
+}
+
+func newRecordingTransport() *recordingTransport {
+	return &recordingTransport{headers: map[string]string{}}
+}
+
+func (r *recordingTransport) SetHeader(_ context.Context, key, value string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.headers[key] = value
+}
+
+func (r *recordingTransport) get(key string) (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	value, ok := r.headers[key]
+	return value, ok
+}
+
+// TestListObjectsDeadlineExceededWarningHeader is the server-level
+// regression test for issue #3276: a ListObjects request cut short by the
+// ListObjects deadline returns partial results with a nil error, so the
+// only signal that the results are incomplete is the
+// X-Openfga-Warning: deadline-exceeded response header. A request that
+// completes within its deadline must not carry the header.
+func TestListObjectsDeadlineExceededWarningHeader(t *testing.T) {
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+		tuple.NewTupleKey("document:2", "viewer", "user:anne"),
+	}
+
+	t.Run("deadline_exceeded_sets_warning_header", func(t *testing.T) {
+		transport := newRecordingTransport()
+
+		// A 1ns deadline expires before evaluation can complete, the
+		// same truncation the issue reproduces with a 10us deadline.
+		s, baseReq := setupListObjectsServer(t, "", tuples,
+			WithTransport(transport),
+			WithListObjectsPipelineEnabled(false),
+			WithListObjectsDeadline(time.Nanosecond),
+		)
+
+		resp, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:              baseReq.GetStoreId(),
+			AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:anne",
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		warning, ok := transport.get(ListObjectsWarningHeader)
+		require.True(t, ok, "expected the %q header to be set on a deadline-truncated response", ListObjectsWarningHeader)
+		require.Equal(t, ListObjectsDeadlineExceededWarning, warning)
+	})
+
+	t.Run("completed_request_sets_no_warning_header", func(t *testing.T) {
+		transport := newRecordingTransport()
+
+		s, baseReq := setupListObjectsServer(t, "", tuples,
+			WithTransport(transport),
+			WithListObjectsPipelineEnabled(false),
+		)
+
+		resp, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:              baseReq.GetStoreId(),
+			AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:anne",
+		})
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"document:1", "document:2"}, resp.GetObjects())
+
+		_, ok := transport.get(ListObjectsWarningHeader)
+		require.False(t, ok, "did not expect the %q header on a complete response", ListObjectsWarningHeader)
+	})
 }
