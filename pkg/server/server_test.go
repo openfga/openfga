@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"net"
 	"strconv"
 	"sync"
 	"testing"
@@ -19,8 +21,10 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -2107,6 +2111,38 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, []string{WarningDeadlineExceeded}, srv.trailer.Get(WarningHeader))
+	})
+
+	t.Run("streamed_list_objects_warning_trailer_reaches_grpc_client", func(t *testing.T) {
+		lis := bufconn.Listen(1024 * 1024)
+		grpcServer := grpc.NewServer()
+		openfgav1.RegisterOpenFGAServiceServer(grpcServer, s)
+		go func() { _ = grpcServer.Serve(lis) }()
+		defer grpcServer.Stop()
+
+		conn, err := grpc.NewClient("passthrough:///bufnet",
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		stream, err := openfgav1.NewOpenFGAServiceClient(conn).StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
+		})
+		require.NoError(t, err)
+		for {
+			_, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+		}
+		require.Equal(t, []string{WarningDeadlineExceeded}, stream.Trailer().Get(WarningHeader))
 	})
 
 	t.Run("resource_search_return_no_error_and_warning_header", func(t *testing.T) {

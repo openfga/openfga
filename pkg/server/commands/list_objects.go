@@ -493,7 +493,7 @@ func (q *ListObjectsQuery) evaluate(
 		}
 		// The deadline error is elided so that partial results are returned. Record it
 		// before closing the channel so that consumers observe it once they are done reading.
-		if errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			resolutionMetadata.DeadlineExceeded.Store(true)
 		}
 		close(resultsChan)
