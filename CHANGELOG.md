@@ -18,6 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
+- Fixed `Server.Close()` panicking with "close of closed channel" when called more than once. [#3395](https://github.com/openfga/openfga/pull/3395)
 
 ## [1.22.1] - 2026-10-27
 ### Changed
