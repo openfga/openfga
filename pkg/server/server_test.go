@@ -991,6 +991,116 @@ func TestReleasesConnections(t *testing.T) {
 	})
 }
 
+// TestCheckFanOutDoesNotStallConnectionPool guards #3326. A TTU check reads a large tupleset and
+// dispatches a nested check per row. If the open read holds its pool connection while the
+// producer blocks on the dispatch channel, concurrent checks can hold every connection while
+// their nested checks wait for one, and the request stalls until its deadline.
+func TestCheckFanOutDoesNotStallConnectionPool(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	ds, err := postgres.New(testDatastore.GetConnectionURI(true), sqlcommon.NewConfig(
+		sqlcommon.WithMaxOpenConns(4),
+		sqlcommon.WithMaxTuplesPerWrite(1000),
+	))
+	require.NoError(t, err)
+	defer ds.Close()
+
+	s := MustNewServerWithOpts(WithDatastore(storagewrappers.NewContextWrapper(ds)))
+	t.Cleanup(s.Close)
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	model, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+
+			type user
+
+			type tenant
+				relations
+					define member: [user]
+
+			type role
+				relations
+					define assignee: [user]
+					define tenant: [tenant]
+					define assigned: assignee and member from tenant
+
+			type resource
+				relations
+					define manager_role: [role]
+					define can_manage: assigned from manager_role`).GetTypeDefinitions(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+
+	// Each resource has more manager roles than one read-ahead page, and none of the roles grants
+	// user:jon, so every check walks all of them.
+	const resources, roles = 8, 250
+	var tuples []*openfgav1.TupleKey
+	for r := 0; r < roles; r++ {
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("role:%d", r), "assignee", fmt.Sprintf("user:%d", r)))
+		for res := 0; res < resources; res++ {
+			tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("resource:%d", res), "manager_role", fmt.Sprintf("role:%d", r)))
+		}
+	}
+	for start := 0; start < len(tuples); start += 100 {
+		_, err := s.Write(ctx, &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetAuthorizationModelId(),
+			Writes:               &openfgav1.WriteRequestWrites{TupleKeys: tuples[start:min(start+100, len(tuples))]},
+		})
+		require.NoError(t, err)
+	}
+
+	checks := make([]*openfgav1.BatchCheckItem, 0, resources)
+	for res := 0; res < resources; res++ {
+		checks = append(checks, &openfgav1.BatchCheckItem{
+			TupleKey:      &openfgav1.CheckRequestTupleKey{User: "user:jon", Relation: "can_manage", Object: fmt.Sprintf("resource:%d", res)},
+			CorrelationId: strconv.Itoa(res),
+		})
+	}
+
+	// Concurrent batches on a cold server, as in the report. A stall ends only at the deadline.
+	const batches = 4
+	var wg sync.WaitGroup
+	errs := make(chan error, batches*resources)
+	for b := 0; b < batches; b++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			resp, err := s.BatchCheck(reqCtx, &openfgav1.BatchCheckRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetAuthorizationModelId(),
+				Checks:               checks,
+			})
+			if err != nil {
+				errs <- err
+				return
+			}
+			for id, res := range resp.GetResult() {
+				if res.GetError() != nil {
+					errs <- fmt.Errorf("check %s: %s", id, res.GetError().GetMessage())
+				} else if res.GetAllowed() {
+					errs <- fmt.Errorf("check %s: allowed, want denied", id)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+}
+
 func TestOperationsWithInvalidModel(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

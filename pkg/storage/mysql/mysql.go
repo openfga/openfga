@@ -241,6 +241,9 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	return iter.ToArray(ctx, options.Pagination)
 }
 
+// read returns an iterator over the tuples that match filter. Without options, it reads in pages
+// ordered by the tuple primary key, so the iterator holds no connection between calls. With
+// options, it runs one query ordered by ulid, for ReadPage.
 func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions, db *sql.DB) (*sqlcommon.SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()
@@ -289,6 +292,11 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	}
 	if options != nil && options.Pagination.PageSize != 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	}
+
+	if options == nil {
+		rg := sqlcommon.NewPagedRowGetter(sqlcommon.NewSQLConnector(db), sb, sqlcommon.TuplePrimaryKey...)
+		return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 	}
 
 	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(db), sb)
@@ -434,10 +442,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(db), sb)
-	if err != nil {
-		return nil, err
-	}
+	rg := sqlcommon.NewPagedRowGetter(sqlcommon.NewSQLConnector(db), sb, sqlcommon.TuplePrimaryKey...)
 	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
@@ -474,7 +479,7 @@ func (s *Datastore) ReadStartingWithUser(
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
 			"_user":       targetUsersArg,
-		}).OrderBy("object_id")
+		})
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
@@ -483,10 +488,8 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(db), builder)
-	if err != nil {
-		return nil, err
-	}
+	// Results stay ordered by object_id; _user makes the page order unique.
+	rg := sqlcommon.NewPagedRowGetter(sqlcommon.NewSQLConnector(db), builder, sqlcommon.PageKeyObjectID, sqlcommon.PageKeyUser)
 	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
