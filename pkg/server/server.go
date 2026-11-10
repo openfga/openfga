@@ -647,9 +647,14 @@ func WithPlanner(planner *planner.Planner) OpenFGAServiceV1Option {
 	}
 }
 
+// WithRequestTimeout tells the server's internals, such as the Check planner, the timeout applied to every
+// request. Values <= 0 are ignored, leaving the current value (by default [serverconfig.DefaultRequestTimeout]) unchanged.
+// This does not enforce the timeout; callers must do so themselves.
 func WithRequestTimeout(timeout time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.requestTimeout = timeout
+		if timeout > 0 {
+			s.requestTimeout = timeout
+		}
 	}
 }
 
