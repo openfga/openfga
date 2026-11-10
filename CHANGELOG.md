@@ -18,7 +18,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - PostgreSQL: `FindLatestAuthorizationModel` reads only the rows of the store's latest model instead of every model version, so Check and other requests without `authorization_model_id` no longer slow down as the model history grows. [#3377](https://github.com/openfga/openfga/pull/3377)
 - `Querier` statements now ignore client cancellation and client deadlines, so a cancelled request doesn't abort an in-flight query and churn database connections. Instead they are bounded by `--request-timeout`, covering both execution and reading the rows. This applies unless `--context-propagation-to-datastore` is enabled.
 
-
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
 
