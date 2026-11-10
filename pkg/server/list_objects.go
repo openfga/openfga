@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -173,6 +174,12 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	wasWeightedGraphUsed := result.ResolutionMetadata.WasWeightedGraphUsed.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.weighted_graph", wasWeightedGraphUsed)
 
+	wasDeadlineExceeded := result.ResolutionMetadata.DeadlineExceeded.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.deadline_exceeded", wasDeadlineExceeded)
+	if wasDeadlineExceeded {
+		s.transport.SetHeader(ctx, WarningHeader, WarningDeadlineExceeded)
+	}
+
 	if wasDispatchThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 	}
@@ -335,6 +342,14 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	wasWeightedGraphUsed := resolutionMetadata.WasWeightedGraphUsed.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.weighted_graph", wasWeightedGraphUsed)
+
+	wasDeadlineExceeded := resolutionMetadata.DeadlineExceeded.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.deadline_exceeded", wasDeadlineExceeded)
+	if wasDeadlineExceeded {
+		// Objects may already have been sent, at which point headers are gone,
+		// so the warning is sent as a trailer instead.
+		srv.SetTrailer(metadata.Pairs(WarningHeader, WarningDeadlineExceeded))
+	}
 
 	if wasDispatchThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()

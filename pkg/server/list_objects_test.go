@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -41,6 +42,8 @@ type recordingStreamServer struct {
 }
 
 func (s *recordingStreamServer) Context() context.Context { return s.ctx }
+
+func (s *recordingStreamServer) SetTrailer(metadata.MD) {}
 
 func (s *recordingStreamServer) Send(r *openfgav1.StreamedListObjectsResponse) error {
 	s.mu.Lock()

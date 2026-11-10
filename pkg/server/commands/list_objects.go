@@ -115,6 +115,10 @@ type ListObjectsResolutionMetadata struct {
 
 	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
 	CheckCounter atomic.Uint32
+
+	// DeadlineExceeded indicates whether the deadline was hit before the evaluation completed,
+	// which means that the results are likely incomplete.
+	DeadlineExceeded atomic.Bool
 }
 
 type ListObjectsResponse struct {
@@ -486,7 +490,11 @@ func (q *ListObjectsQuery) evaluate(
 			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
-			// TODO set header to indicate "deadline exceeded"
+		}
+		// The deadline error is elided so that partial results are returned. Record it
+		// before closing the channel so that consumers observe it once they are done reading.
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			resolutionMetadata.DeadlineExceeded.Store(true)
 		}
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
@@ -628,6 +636,10 @@ func (q *ListObjectsQuery) Execute(
 		for {
 			value, ok := p.Recv(timeoutCtx)
 			if !ok {
+				// Recv stops without recording an error when its context is done.
+				if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+					res.ResolutionMetadata.DeadlineExceeded.Store(true)
+				}
 				break
 			}
 
@@ -828,6 +840,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			value, ok := p.Recv(timeoutCtx)
 			if !ok {
 				errRx = p.Err()
+				// Recv stops without recording an error when its context is done.
+				if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+					resolutionMetadata.DeadlineExceeded.Store(true)
+				}
 				break
 			}
 
