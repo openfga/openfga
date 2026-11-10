@@ -641,7 +641,7 @@ func (q *ListObjectsQuery) Execute(
 		p.Close() // ensure that the pipeline is closed after any early loop exits
 
 		if err := p.Err(); err != nil {
-			// current list objects behavior is to elide context cancelation errors
+			// current list objects behavior is to elide context cancellation errors
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				if errors.Is(err, condition.ErrEvaluationFailed) {
 					return nil, serverErrors.ValidationError(err)
