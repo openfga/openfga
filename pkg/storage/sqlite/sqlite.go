@@ -258,7 +258,7 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
+	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Time{})
 }
 
 // tupleLockKey represents the composite key we lock on.
@@ -418,6 +418,11 @@ func (s *Datastore) write(
 	defer func() {
 		_ = txn.Rollback()
 	}()
+
+	// If now is zero, use the time after the transaction began.
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 
 	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
 	// Build a deduped, sorted list of keys to lock.
@@ -1262,8 +1267,11 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at <= datetime('subsec','-%f seconds')", horizonOffset.Seconds())).
 		OrderBy(orderBy)
+
+	if horizonOffset > 0 {
+		sb = sqlcommon.AddHorizon(sb, time.Now(), horizonOffset)
+	}
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
