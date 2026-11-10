@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -1862,6 +1863,49 @@ func TestSharedIterator_IsOrdered(t *testing.T) {
 	require.NotNil(t, clone)
 	defer clone.Stop()
 	require.True(t, clone.IsOrdered())
+}
+
+func TestSharedIterator_CloneCountGauge(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+
+	ctx := context.Background()
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	filter := storage.ReadFilter{Object: "document:1", Relation: "viewer"}
+	tuples := []*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "user:1")}}
+
+	mockDatastore.EXPECT().
+		Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
+		Return(storage.NewStaticTupleIterator(tuples), nil).
+		Times(1)
+
+	internalStorage := NewSharedIteratorDatastoreStorage()
+	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+		WithMaxAdmissionTime(50*time.Millisecond))
+
+	before := testutil.ToFloat64(sharedIteratorCloneCount)
+
+	var iters []storage.TupleIterator
+	for range 3 {
+		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
+		require.NoError(t, err)
+		iters = append(iters, iter)
+	}
+	require.InDelta(t, before+3, testutil.ToFloat64(sharedIteratorCloneCount), 0)
+
+	for _, iter := range iters {
+		iter.Stop()
+	}
+
+	// Wait for the admission timer to stop the original iterator and evict the item.
+	require.Eventually(t, func() bool {
+		return length(&internalStorage.read) == 0
+	}, time.Second, time.Millisecond)
+
+	require.InDelta(t, before, testutil.ToFloat64(sharedIteratorCloneCount), 0)
 }
 
 func TestSharedIterator_ManyTuples(t *testing.T) {

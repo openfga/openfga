@@ -18,6 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
+- Fixed the `openfga_shared_iterator_clone_count` gauge drifting negative by one for every shared iterator created when `--shared-iterator-enabled` is set. [#3396](https://github.com/openfga/openfga/pull/3396)
 
 ## [1.22.1] - 2026-10-27
 ### Changed
