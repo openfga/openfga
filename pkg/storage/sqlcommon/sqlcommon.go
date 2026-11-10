@@ -854,6 +854,9 @@ func GetDeleteWriteChangelogItems(
 
 	deleteConditions := sq.Or{}
 
+	// Tuples deleted by this request. A write of one of them inserts it again instead of being a duplicate.
+	deleted := make(map[string]struct{}, len(writeData.Deletes))
+
 	// 1. For Deletes
 	// a. If on_missing: error ( default behavior ):
 	// - Execute DELETEs as a single statement.
@@ -865,7 +868,8 @@ func GetDeleteWriteChangelogItems(
 	// - Execute DELETEs as a single statement.
 	//   On conflict ( row count != delete count ) - rollback & return a HTTP 409 Conflict error
 	for _, tk := range writeData.Deletes {
-		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
+		key := tupleUtils.TupleKeyToString(tk)
+		if _, ok := existing[key]; !ok {
 			// If the tuple does not exist, we can not delete it.
 			switch writeData.Opts.OnMissingDelete {
 			case storage.OnMissingDeleteIgnore:
@@ -879,6 +883,8 @@ func GetDeleteWriteChangelogItems(
 				)
 			}
 		}
+
+		deleted[key] = struct{}{}
 
 		id := ulid.MustNew(ulid.Timestamp(writeData.Now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
@@ -917,8 +923,15 @@ func GetDeleteWriteChangelogItems(
 	// - For rows that DO NOT exist in DB - create both INSERT tuple & INSERT changelog statements
 	// c. Execute INSERTs as a single statement
 	//   On error, return 409 Conflict
+	// A tuple that is also deleted in this request doesn't count as existing: the DELETEs run before the INSERTs,
+	// so it is inserted again, e.g. with a new condition.
 	for _, tk := range writeData.Writes {
-		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
+		key := tupleUtils.TupleKeyToString(tk)
+		existingTuple, ok := existing[key]
+		if _, isDeleted := deleted[key]; isDeleted {
+			ok = false
+		}
+		if ok {
 			// If the tuple exists, we can not write it.
 			switch writeData.Opts.OnDuplicateInsert {
 			case storage.OnDuplicateInsertIgnore:
