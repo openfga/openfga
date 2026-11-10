@@ -64,7 +64,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 			if r := recover(); r != nil {
 				s.logger.ErrorWithContext(ctx, "panic recovered",
 					zap.String("resolver", s.name),
-					zap.Any("error", err),
+					zap.Any("error", r),
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
