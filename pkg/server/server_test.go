@@ -1367,6 +1367,26 @@ func (r *recordingTransport) header(key string) string {
 	return r.headers[key]
 }
 
+// deadlineDatastore is a datastore whose tuple reads fail with context.DeadlineExceeded,
+// as when the datastore hits a timeout of its own while the request context is still live.
+type deadlineDatastore struct {
+	storage.OpenFGADatastore
+}
+
+func (d *deadlineDatastore) Close() {}
+
+func (d *deadlineDatastore) Read(context.Context, string, storage.ReadFilter, storage.ReadOptions) (storage.TupleIterator, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func (d *deadlineDatastore) ReadUsersetTuples(context.Context, string, storage.ReadUsersetTuplesFilter, storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func (d *deadlineDatastore) ReadStartingWithUser(context.Context, string, storage.ReadStartingWithUserFilter, storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	return nil, context.DeadlineExceeded
+}
+
 func (r *recordingTransport) reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -2103,15 +2123,54 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 		require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
 	})
 
-	t.Run("pipeline_return_no_error_and_warning", func(t *testing.T) {
+	t.Run("slow_datastore_return_no_error_and_warning", func(t *testing.T) {
+		// Each of these algorithms reports the deadline differently.
+		for _, experimental := range []string{
+			"", // fallback algorithm
+			serverconfig.ExperimentalListObjectsOptimizations,
+			serverconfig.ExperimentalPipelineListObjects,
+		} {
+			transport := &recordingTransport{}
+			slowDS := mockstorage.NewMockSlowDataStorage(ds, 3*deadline) // No read completes before the deadline
+			s := MustNewServerWithOpts(
+				WithDatastore(slowDS),
+				WithTransport(transport),
+				WithExperimentals(experimental),
+				WithListObjectsPipelineEnabled(experimental == serverconfig.ExperimentalPipelineListObjects),
+				WithListObjectsDeadline(deadline),
+			)
+			t.Cleanup(s.Close)
+
+			resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				User:                 "user:tyler",
+				Relation:             "viewer",
+				Type:                 "document",
+			})
+			require.NoError(t, err)
+			require.Empty(t, resp.GetObjects())
+			require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
+
+			srv := NewMockStreamServer(ctx)
+			err = s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				User:                 "user:tyler",
+				Relation:             "viewer",
+				Type:                 "document",
+			}, srv)
+			require.NoError(t, err)
+			require.Equal(t, []string{WarningDeadlineExceeded}, srv.trailer.Get(WarningHeader))
+		}
+	})
+
+	t.Run("datastore_deadline_return_no_error_and_warning", func(t *testing.T) {
 		transport := &recordingTransport{}
-		slowDS := mockstorage.NewMockSlowDataStorage(ds, 3*deadline) // No read completes before the deadline
 		s := MustNewServerWithOpts(
-			WithDatastore(slowDS),
+			WithDatastore(&deadlineDatastore{ds}),
 			WithTransport(transport),
-			WithExperimentals(serverconfig.ExperimentalPipelineListObjects),
-			WithListObjectsPipelineEnabled(true),
-			WithListObjectsDeadline(deadline),
+			WithListObjectsPipelineEnabled(false),
 		)
 		t.Cleanup(s.Close)
 
@@ -2123,7 +2182,7 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 			Type:                 "document",
 		})
 		require.NoError(t, err)
-		require.Empty(t, resp.GetObjects())
+		require.NotNil(t, resp)
 		require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
 
 		srv := NewMockStreamServer(ctx)

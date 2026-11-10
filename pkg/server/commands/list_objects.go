@@ -493,7 +493,7 @@ func (q *ListObjectsQuery) evaluate(
 		}
 		// The deadline error is elided so that partial results are returned. Record it
 		// before closing the channel so that consumers observe it once they are done reading.
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) {
 			resolutionMetadata.DeadlineExceeded.Store(true)
 		}
 		close(resultsChan)
@@ -659,9 +659,6 @@ func (q *ListObjectsQuery) Execute(
 					return nil, serverErrors.ValidationError(err)
 				}
 				return nil, serverErrors.HandleError("", err)
-			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				res.ResolutionMetadata.DeadlineExceeded.Store(true)
 			}
 		}
 
@@ -844,7 +841,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			if !ok {
 				errRx = p.Err()
 				// Recv stops without recording an error when its context is done.
-				if errors.Is(errRx, context.DeadlineExceeded) || errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+				if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
 					resolutionMetadata.DeadlineExceeded.Store(true)
 				}
 				break
