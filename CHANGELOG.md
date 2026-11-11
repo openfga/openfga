@@ -22,7 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
 
 ### Security
-- Fixed vulnerabilities reported in the `openfga/openfga` Docker image: updated `golang.org/x/net` to v0.62.0, moved the build toolchain and Docker builder image to Go 1.27.4, and updated the bundled `grpc_health_probe` to v0.4.62 in both `Dockerfile` and `Dockerfile.goreleaser`. The release image was still shipping grpc-health-probe v0.4.57, which was built with Go 1.26.8 and vulnerable versions of `golang.org/x/net` and `go-jose`.
+- Fixed vulnerabilities reported in the `openfga/openfga` Docker image: updated `golang.org/x/net` to v0.62.0, moved the build toolchain and Docker builder image to Go 1.27.4, and updated the bundled `grpc_health_probe` to v0.4.62 in both `Dockerfile` and `Dockerfile.goreleaser`. The release image was still shipping grpc-health-probe v0.4.57, which was built with Go 1.26.8 and vulnerable versions of `golang.org/x/net` and `go-jose`. [#3405](https://github.com/openfga/openfga/pull/3405)
 
 ## [1.22.1] - 2026-10-27
 ### Changed
