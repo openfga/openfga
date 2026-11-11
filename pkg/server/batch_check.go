@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -284,10 +285,15 @@ func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckE
 	var invalidContextError *commands.InvalidContextError
 	var throttledError *commands.ThrottledError
 
+	var duplicateContextualTupleError *tuple.DuplicateContextualTupleError
+
 	err := &openfgav1.CheckError{Message: cmdErr.Error()}
 
 	// switch to map the possible errors to their specific GRPC codes in the proto definition
 	switch {
+	case errors.As(cmdErr, &duplicateContextualTupleError),
+		status.Code(cmdErr) == codes.Code(openfgav1.ErrorCode_duplicate_contextual_tuple): // from the v2 check path
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_duplicate_contextual_tuple}
 	case errors.As(cmdErr, &invalidRelationError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
 	case errors.As(cmdErr, &invalidTupleError):

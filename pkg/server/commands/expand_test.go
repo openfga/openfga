@@ -1016,6 +1016,35 @@ func TestExpand(t *testing.T) {
 			),
 		},
 		{
+			name: "contextual_tuples_with_same_key_and_different_conditions_fail_validation",
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+
+				type document
+					relations
+						define viewer: [user, user with in_us]
+
+				condition in_us(region: string) {
+					region == "us"
+				}`),
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "viewer", "user:bob"),
+						tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:bob", "in_us", nil),
+					},
+				},
+			},
+			expectedError: serverErrors.HandleTupleValidateError(
+				&tuple.DuplicateContextualTupleError{
+					TupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:bob", "in_us", nil),
+				},
+			),
+		},
+		{
 			name: "expand_with_only_contextual_tuples",
 			model: testutils.MustTransformDSLToProtoWithID(`
 				model

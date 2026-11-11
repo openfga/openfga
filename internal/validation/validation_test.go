@@ -1601,3 +1601,64 @@ type document
 		})
 	}
 }
+
+func TestValidateNoConflictingContextualTuples(t *testing.T) {
+	ctxEU, err := structpb.NewStruct(map[string]any{"allowed": "eu"})
+	require.NoError(t, err)
+	ctxUS, err := structpb.NewStruct(map[string]any{"allowed": "us"})
+	require.NoError(t, err)
+	ctxAB, err := structpb.NewStruct(map[string]any{"a": "1", "b": "2"})
+	require.NoError(t, err)
+	ctxBA, err := structpb.NewStruct(map[string]any{"b": "2", "a": "1"})
+	require.NoError(t, err)
+
+	plain := tuple.NewTupleKey("document:1", "viewer", "user:anne")
+	inEU := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_eu", nil)
+	inUS := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_us", nil)
+	regionEU := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_region", ctxEU)
+	regionUS := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_region", ctxUS)
+
+	tests := []struct {
+		name     string
+		tuples   []*openfgav1.TupleKey
+		conflict *openfgav1.TupleKey
+	}{
+		{name: "no_tuples"},
+		{
+			name:   "different_keys",
+			tuples: []*openfgav1.TupleKey{inEU, tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:bob", "in_us", nil)},
+		},
+		{name: "identical_without_condition", tuples: []*openfgav1.TupleKey{plain, plain}},
+		{name: "identical_with_condition", tuples: []*openfgav1.TupleKey{inEU, inEU}},
+		{name: "identical_with_condition_context", tuples: []*openfgav1.TupleKey{regionEU, regionEU}},
+		{
+			name: "same_condition_context_in_different_key_order",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_region", ctxAB),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_region", ctxBA),
+			},
+		},
+		{name: "different_condition_names", tuples: []*openfgav1.TupleKey{inEU, inUS}, conflict: inUS},
+		{name: "without_and_with_condition", tuples: []*openfgav1.TupleKey{plain, inUS}, conflict: inUS},
+		{name: "with_and_without_condition", tuples: []*openfgav1.TupleKey{inUS, plain}, conflict: plain},
+		{name: "different_condition_context", tuples: []*openfgav1.TupleKey{regionEU, regionUS}, conflict: regionUS},
+		{
+			name:     "conflict_separated_by_other_tuples",
+			tuples:   []*openfgav1.TupleKey{inEU, tuple.NewTupleKey("document:2", "viewer", "user:anne"), inEU, inUS},
+			conflict: inUS,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateNoConflictingContextualTuples(tt.tuples)
+			if tt.conflict == nil {
+				require.NoError(t, err)
+				return
+			}
+			var dupErr *tuple.DuplicateContextualTupleError
+			require.ErrorAs(t, err, &dupErr)
+			require.Equal(t, tuple.TupleKeyWithConditionToString(tt.conflict), tuple.TupleKeyWithConditionToString(dupErr.TupleKey))
+		})
+	}
+}
