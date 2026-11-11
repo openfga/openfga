@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -46,9 +47,16 @@ func (h *notifyCancellation) HandleCancel(ctx context.Context) {
 	close(h.canceled)
 }
 
-func TestReadUserTupleCancellationReusesConnection(t *testing.T) {
-	for _, object := range []string{"document:1", "document:missing"} {
-		t.Run(object, func(t *testing.T) {
+func TestReadUserTupleCancellation(t *testing.T) {
+	for _, tc := range []struct {
+		name, object string
+		blocked      bool
+	}{
+		{name: "existing", object: "document:1"},
+		{name: "missing", object: "document:missing"},
+		{name: "blocked_beyond_grace", object: "document:1", blocked: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			uri := storagefixtures.RunDatastoreTestContainer(t, "postgres").GetConnectionURI(true)
 			cfg := sqlcommon.NewConfig()
 			poolCfg, err := parseConfig(uri, false, cfg)
@@ -82,12 +90,30 @@ func TestReadUserTupleCancellationReusesConnection(t *testing.T) {
 			_, err = ds.ReadUserTuple(t.Context(), store, filter, storage.ReadUserTupleOptions{})
 			require.NoError(t, err)
 			connections := pool.Stat().NewConnsCount()
+			var tx pgx.Tx
+			if tc.blocked {
+				locker, err := pgx.Connect(t.Context(), uri)
+				require.NoError(t, err)
+				defer locker.Close(t.Context())
+				tx, err = locker.Begin(t.Context())
+				require.NoError(t, err)
+				defer tx.Rollback(t.Context())
+				// Keep the query blocked until cancellation interrupts the socket.
+				_, err = tx.Exec(t.Context(), "LOCK TABLE tuple IN ACCESS EXCLUSIVE MODE")
+				require.NoError(t, err)
+			}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			filter.Object = object
+			filter.Object = tc.object
 			cancelRead <- cancel
+			started := time.Now()
 			_, err = ds.ReadUserTuple(ctx, store, filter, storage.ReadUserTupleOptions{})
 			require.ErrorIs(t, err, context.Canceled)
+			if tc.blocked {
+				require.GreaterOrEqual(t, time.Since(started), tupleReadCancellationGrace)
+				require.NoError(t, tx.Rollback(t.Context()))
+				connections++
+			}
 			filter.Object = tk.GetObject()
 			got, err := ds.ReadUserTuple(t.Context(), store, filter, storage.ReadUserTupleOptions{})
 			require.NoError(t, err)
