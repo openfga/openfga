@@ -30,6 +30,9 @@ type RemoteOidcAuthenticator struct {
 	Audience       string
 	Subjects       []string
 	ClientIDClaims []string
+	// ValidSigningAlgorithms lists the JWT signing algorithms (the `alg` header) that are accepted.
+	// It defaults to RS256.
+	ValidSigningAlgorithms []string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -50,16 +53,37 @@ var (
 	ErrMissingAudience = errors.New("oidc: audience must be set")
 )
 
+// DefaultSigningAlgorithms are the JWT signing algorithms accepted when none are configured.
+var DefaultSigningAlgorithms = []string{"RS256"}
+
+// supportedSigningAlgorithms are the asymmetric JWT signing algorithms that can be configured.
+// Symmetric (HMAC) algorithms and "none" are intentionally not supported, since the keys are
+// fetched from the issuer's public JWKS.
+var supportedSigningAlgorithms = []string{
+	"RS256", "RS384", "RS512",
+	"PS256", "PS384", "PS512",
+	"ES256", "ES384", "ES512",
+	"EdDSA",
+}
+
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string, clientIDClaims []string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string, clientIDClaims []string, validSigningAlgorithms []string) (*RemoteOidcAuthenticator, error) {
 	// both issuer and audience are StringOrURI values (RFC 7519 §4.1.1, §4.1.3); whitespace is valid, so only reject strictly empty
 	if mainIssuer == "" {
 		return nil, ErrMissingIssuer
 	}
 	if audience == "" {
 		return nil, ErrMissingAudience
+	}
+	if len(validSigningAlgorithms) == 0 {
+		validSigningAlgorithms = DefaultSigningAlgorithms
+	}
+	for _, alg := range validSigningAlgorithms {
+		if !slices.Contains(supportedSigningAlgorithms, alg) {
+			return nil, fmt.Errorf("oidc: unsupported signing algorithm %q, must be one of %s", alg, strings.Join(supportedSigningAlgorithms, ", "))
+		}
 	}
 
 	client := retryablehttp.NewClient()
@@ -71,6 +95,8 @@ func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audie
 		Subjects:       subjects,
 		httpClient:     client.StandardClient(),
 		ClientIDClaims: clientIDClaims,
+
+		ValidSigningAlgorithms: slices.Clone(validSigningAlgorithms),
 	}
 
 	// Client ID is:
@@ -96,7 +122,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	}
 
 	options := []jwt.ParserOption{
-		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithValidMethods(oidc.ValidSigningAlgorithms),
 		jwt.WithIssuedAt(),
 		jwt.WithExpirationRequired(),
 	}
