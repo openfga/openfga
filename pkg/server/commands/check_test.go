@@ -14,9 +14,13 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestIsV2CheckTerminalError(t *testing.T) {
-	t.Parallel()
+func TestWithCheckQueryV2SQLOptimizations(t *testing.T) {
+	require.False(t, NewCheckQuery().sqlOptimizationsEnabled)
+	require.True(t, NewCheckQuery(WithCheckQueryV2SQLOptimizations(true)).sqlOptimizationsEnabled)
+	require.False(t, NewCheckQuery(WithCheckQueryV2SQLOptimizations(false)).sqlOptimizationsEnabled)
+}
 
+func TestIsV2CheckTerminalError(t *testing.T) {
 	// v2Check funnels most internal errors through CheckCommandErrorToServerError,
 	// so the classifier sees gRPC status errors rather than the original sentinels/types.
 	// These cases mirror what that converter actually produces.
