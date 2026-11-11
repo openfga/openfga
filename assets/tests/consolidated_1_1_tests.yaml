@@ -5085,6 +5085,64 @@ tests:
                 object: repo:2
             expectation:
               - user:a
+  # Requests in production send identical copies of the same contextual tuple (same user, relation, object
+  # and no condition), including usersets. They must keep being accepted and resolve as if sent once.
+  - name: check_accepts_identical_duplicate_contextual_tuples
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define blocked: [user]
+              define viewer: [user, group#member] but not blocked
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+              - user: user:anne # same as above
+                relation: viewer
+                object: document:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: group:eng#member
+                relation: viewer
+                object: document:1
+              - user: user:anne
+                relation: member
+                object: group:eng
+              - user: group:eng#member # same as the first
+                relation: viewer
+                object: document:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+              - user: user:anne
+                relation: blocked
+                object: document:1
+              - user: user:anne # same as the second
+                relation: blocked
+                object: document:1
+            expectation: false
   - name: error_if_contextual_tuples_do_not_follow_type_restrictions
     stages:
       - model: | # concurrent checks

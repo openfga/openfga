@@ -659,6 +659,46 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 	}
 }
 
+// Test_combinedTupleReader_ReadUserTuple_RepeatedContextualTupleKey documents a known limitation:
+// when a request sends more than one contextual tuple with the same user, relation and object,
+// ReadUserTuple returns only one of them, so Check evaluates only that tuple's condition.
+// With up to 12 contextual tuples the first one in request order wins; above that the sort in
+// NewCombinedTupleReader is not stable and the winner depends on the rest of the list.
+// Meanwhile storage.InvariantCacheKey ignores contextual tuple order, so BatchCheck and the
+// Check query cache treat requests that differ only in this order as the same request.
+// If this behavior changes, update this test and the "Contextual Tuples" docs page.
+func Test_combinedTupleReader_ReadUserTuple_RepeatedContextualTupleKey(t *testing.T) {
+	inEU := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_eu", nil)
+	inUS := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_us", nil)
+	noCondition := tuple.NewTupleKey("document:1", "viewer", "user:anne")
+	filter := storage.ReadUserTupleFilter{Object: "document:1", Relation: "viewer", User: "user:anne"}
+
+	tests := []struct {
+		name             string
+		contextualTuples []*openfgav1.TupleKey
+		want             *openfgav1.TupleKey
+	}{
+		{name: "in_eu_first", contextualTuples: []*openfgav1.TupleKey{inEU, inUS}, want: inEU},
+		{name: "in_us_first", contextualTuples: []*openfgav1.TupleKey{inUS, inEU}, want: inUS},
+		{name: "no_condition_first", contextualTuples: []*openfgav1.TupleKey{noCondition, inUS}, want: noCondition},
+		{name: "condition_first", contextualTuples: []*openfgav1.TupleKey{inUS, noCondition}, want: inUS},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtl, mockRelationshipTupleReader := makeMocks(t)
+			defer mockCtl.Finish()
+			mockRelationshipTupleReader.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+			c := NewCombinedTupleReader(mockRelationshipTupleReader, tt.contextualTuples)
+			got, err := c.ReadUserTuple(context.Background(), "1", filter, storage.ReadUserTupleOptions{})
+			require.NoError(t, err)
+			if diff := cmp.Diff(tt.want, got.GetKey(), protocmp.Transform()); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 	mockCtl, mockRelationshipTupleReader := makeMocks(t)
 	defer mockCtl.Finish()

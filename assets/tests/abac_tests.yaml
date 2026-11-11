@@ -3674,3 +3674,64 @@ tests:
             context:
               "x": "2"
             expectation:
+  # Identical copies of a conditioned contextual tuple (same user, relation, object, condition and condition
+  # context) must be accepted and evaluated as if sent once.
+  - name: identical_duplicate_conditioned_contextual_tuples
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with in_region]
+
+          condition in_region(region: string, allowed: string) {
+            region == allowed
+          }
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+              - user: user:anne # same as above
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+            context:
+              region: eu
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+              - user: user:anne # same as above
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+            context:
+              region: us
+            expectation: false

@@ -101,6 +101,17 @@ func TestInvariantCacheKey(t *testing.T) {
 		require.Equal(t, a, b)
 	})
 
+	// Documents a known limitation: the key also ignores the order of contextual tuples that share
+	// a user, relation and object, but Check evaluates only one of them and which one depends on
+	// that order. See Test_combinedTupleReader_ReadUserTuple_RepeatedContextualTupleKey.
+	t.Run("order_of_repeated_contextual_tuple_key_is_ignored", func(t *testing.T) {
+		inEU := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_eu", nil)
+		inUS := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_us", nil)
+		a := InvariantCacheKey(storeID, modelID, nil, inEU, inUS)
+		b := InvariantCacheKey(storeID, modelID, nil, inUS, inEU)
+		require.Equal(t, a, b)
+	})
+
 	t.Run("different_conditions_produce_different_keys", func(t *testing.T) {
 		t1 := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "cond_a", nil)
 		t2 := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "cond_b", nil)
