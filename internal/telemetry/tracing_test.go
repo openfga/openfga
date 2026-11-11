@@ -1,8 +1,11 @@
 package telemetry
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel"
 )
 
 func TestResolveOTLPSecurity(t *testing.T) {
@@ -221,5 +224,69 @@ func TestResolveSampler(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewSpanExporter(t *testing.T) {
+	t.Run("noop_does_not_need_a_collector", func(t *testing.T) {
+		// nothing listens here, so the otlp exporter would fail to connect
+		exp, err := newSpanExporter(&customTracer{exporter: ExporterNoop, endpoint: "localhost:1", insecure: true})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := exp.(noopExporter); !ok {
+			t.Fatalf("expected noopExporter, got %T", exp)
+		}
+	})
+
+	t.Run("noop_is_case_insensitive", func(t *testing.T) {
+		exp, err := newSpanExporter(&customTracer{exporter: "NOOP"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := exp.(noopExporter); !ok {
+			t.Fatalf("expected noopExporter, got %T", exp)
+		}
+	})
+
+	t.Run("unknown_exporter_errors", func(t *testing.T) {
+		_, err := newSpanExporter(&customTracer{exporter: "zipkin"})
+		if err == nil || !strings.Contains(err.Error(), "unsupported trace exporter 'zipkin'") {
+			t.Fatalf("expected unsupported exporter error, got %v", err)
+		}
+	})
+}
+
+func TestMustNewTracerProviderWithNoopExporter(t *testing.T) {
+	prevTP := otel.GetTracerProvider()
+	prevPropagator := otel.GetTextMapPropagator()
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTP)
+		otel.SetTextMapPropagator(prevPropagator)
+	})
+
+	tp := MustNewTracerProvider(
+		WithExporter(ExporterNoop),
+		WithOTLPEndpoint("localhost:1"),
+		WithOTLPInsecure(),
+		WithSampler("always_on"),
+	)
+	t.Cleanup(func() {
+		_ = tp.Shutdown(context.Background())
+	})
+
+	_, span := otel.Tracer("test").Start(context.Background(), "op")
+	defer span.End()
+
+	// spans still get recorded and carry a trace ID, they just aren't exported
+	if !span.IsRecording() {
+		t.Fatal("expected span to be recording")
+	}
+	if !span.SpanContext().TraceID().IsValid() {
+		t.Fatal("expected a valid trace ID")
+	}
+
+	if err := tp.ForceFlush(context.Background()); err != nil {
+		t.Fatalf("unexpected flush error: %v", err)
 	}
 }

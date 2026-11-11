@@ -22,6 +22,34 @@ import (
 
 type TracerOption func(d *customTracer)
 
+const (
+	// ExporterOTLP sends spans to an OTLP collector over gRPC. This is the default.
+	ExporterOTLP = "otlp"
+
+	// ExporterNoop records spans (so trace and span IDs get propagated and can
+	// show up in logs) but doesn't send them anywhere. It doesn't need a collector.
+	ExporterNoop = "noop"
+)
+
+// noopExporter is a [sdktrace.SpanExporter] that drops every span.
+type noopExporter struct{}
+
+func (noopExporter) ExportSpans(_ context.Context, _ []sdktrace.ReadOnlySpan) error {
+	return nil
+}
+
+func (noopExporter) Shutdown(_ context.Context) error {
+	return nil
+}
+
+// WithExporter sets the span exporter to use, either [ExporterOTLP] or [ExporterNoop].
+// An empty value means [ExporterOTLP].
+func WithExporter(exporter string) TracerOption {
+	return func(d *customTracer) {
+		d.exporter = exporter
+	}
+}
+
 func WithOTLPEndpoint(endpoint string) TracerOption {
 	return func(d *customTracer) {
 		d.endpoint = endpoint
@@ -53,6 +81,7 @@ func WithAttributes(attrs ...attribute.KeyValue) TracerOption {
 }
 
 type customTracer struct {
+	exporter   string
 	endpoint   string
 	insecure   bool
 	attributes []attribute.KeyValue
@@ -149,6 +178,34 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 		panic(err)
 	}
 
+	exp, err := newSpanExporter(tracer)
+	if err != nil {
+		panic(err)
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(ResolveSampler(tracer.sampler, tracer.samplingRatio)),
+		sdktrace.WithResource(res),
+		sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp)),
+	)
+
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+
+	otel.SetTracerProvider(tp)
+
+	return tp
+}
+
+// newSpanExporter builds the span exporter selected for the tracer.
+func newSpanExporter(tracer *customTracer) (sdktrace.SpanExporter, error) {
+	switch strings.ToLower(tracer.exporter) {
+	case ExporterNoop:
+		return noopExporter{}, nil
+	case "", ExporterOTLP:
+	default:
+		return nil, fmt.Errorf("unsupported trace exporter '%s', must be one of: %s, %s", tracer.exporter, ExporterOTLP, ExporterNoop)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -167,23 +224,12 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 		options = append(options, otlptracegrpc.WithInsecure())
 	}
 
-	var exp sdktrace.SpanExporter
-	exp, err = otlptracegrpc.New(ctx, options...)
+	exp, err := otlptracegrpc.New(ctx, options...)
 	if err != nil {
-		panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
+		return nil, fmt.Errorf("failed to establish a connection with the otlp exporter: %w", err)
 	}
 
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(ResolveSampler(tracer.sampler, tracer.samplingRatio)),
-		sdktrace.WithResource(res),
-		sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp)),
-	)
-
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-
-	otel.SetTracerProvider(tp)
-
-	return tp
+	return exp, nil
 }
 
 // TraceError marks the span as having an error, except if the error is context.Canceled,
