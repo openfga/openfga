@@ -29,6 +29,7 @@ type cancelReadConn struct {
 	canceled <-chan struct{}
 }
 
+// Read triggers cancellation at socket I/O and bounds the wait for its handler.
 func (c *cancelReadConn) Read(b []byte) (int, error) {
 	select {
 	case cancel := <-c.cancel:
@@ -45,6 +46,7 @@ func (c *cancelReadConn) Read(b []byte) (int, error) {
 	return c.Conn.Read(b)
 }
 
+// TestCancelReadConnNotificationTimeout verifies a missing handler fails without hanging.
 func TestCancelReadConnNotificationTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		client, server := net.Pipe()
@@ -70,11 +72,14 @@ type notifyCancellation struct {
 	canceled chan struct{}
 }
 
+// HandleCancel signals only after the wrapped handler has applied its deadline.
 func (h *notifyCancellation) HandleCancel(ctx context.Context) {
 	h.Handler.HandleCancel(ctx)
 	close(h.canceled)
 }
 
+// TestReadUserTupleCancellation verifies cancellation errors and subsequent pool reuse
+// during query preparation, execution, and deadline expiry.
 func TestReadUserTupleCancellation(t *testing.T) {
 	for _, tc := range []struct {
 		name, object string
@@ -174,11 +179,13 @@ type deadlineConn struct {
 	deadline time.Time
 }
 
+// SetDeadline records socket deadlines without performing network I/O.
 func (c *deadlineConn) SetDeadline(deadline time.Time) error {
 	c.deadline = deadline
 	return nil
 }
 
+// TestTupleReadCancellationDeadline verifies grace eligibility, deadline caps, and cleanup.
 func TestTupleReadCancellationDeadline(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

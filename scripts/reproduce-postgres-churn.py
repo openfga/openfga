@@ -19,6 +19,7 @@ from pathlib import Path
 
 
 def object_type(name, relation):
+    """Build a synthetic type supporting direct and recursive role membership."""
     return {
         "type": name,
         "relations": {relation: {"this": {}}},
@@ -46,10 +47,12 @@ MODEL = {
 
 
 def tuple_key(user, relation, obj):
+    """Build an OpenFGA relationship tuple key."""
     return {"user": user, "relation": relation, "object": obj}
 
 
 async def command(*args, check=True, **kwargs):
+    """Run a subprocess with a bounded lifetime and capture its combined output."""
     process = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
@@ -68,6 +71,7 @@ async def command(*args, check=True, **kwargs):
 
 
 async def request(url, body=None):
+    """Send a bounded local HTTP request and reject error responses."""
     # HTTP/1.0 closes the response, avoiding a client dependency or chunk parser.
     parsed = urllib.parse.urlsplit(url)
     data = b"" if body is None else json.dumps(body).encode()
@@ -93,12 +97,14 @@ async def request(url, body=None):
 
 
 def free_port():
+    """Find an available loopback TCP port for a local server."""
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
 
 
 async def run(args):
+    """Measure churn and decision parity using an isolated local PostgreSQL instance."""
     binary = str(Path(args.binary).resolve(strict=True))
     with open(binary, "rb") as executable:
         digest = hashlib.file_digest(executable, "sha256").hexdigest()
@@ -108,7 +114,9 @@ async def run(args):
     api, metrics, grpc = (free_port() for _ in range(3))
 
     async def relay(reader, writer):
+        """Proxy one PostgreSQL connection with delayed server replies and clean up both peers."""
         async def copy(source, destination, delay=0):
+            """Forward byte chunks, optionally delaying each chunk, until EOF."""
             while data := await source.read(65536):
                 if delay:
                     await asyncio.sleep(delay)
@@ -133,6 +141,7 @@ async def run(args):
             tasks.remove(task)
 
     async def pool():
+        """Read the local server's PostgreSQL pool metrics."""
         text = await request(f"http://127.0.0.1:{metrics}/metrics")
         return {
             line.split()[0].split("{")[0]: float(line.split()[1])
@@ -218,6 +227,7 @@ async def run(args):
                 await request(base + "/write", {"authorization_model_id": model, "writes": {"tuple_keys": tuples}})
 
                 async def check(user, relation, obj, expected):
+                    """Time one Check and compare its decision with the expected result."""
                     started = time.monotonic()
                     body = json.loads(
                         await request(

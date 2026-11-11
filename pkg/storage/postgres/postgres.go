@@ -61,6 +61,7 @@ type Datastore struct {
 // Ensures that Datastore implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
+// parseConfig applies datastore pool settings and the direct-read cancellation policy.
 func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
 	c, err := pgxpool.ParseConfig(uri)
 	if err != nil {
@@ -130,6 +131,8 @@ type tupleReadCancellationHandler struct {
 	*pgconn.DeadlineContextWatcherHandler
 }
 
+// HandleCancel interrupts operations immediately, except for the bounded grace
+// allowed for explicitly cancelled direct tuple reads.
 func (h *tupleReadCancellationHandler) HandleCancel(ctx context.Context) {
 	deadline := time.Now()
 	if ctx.Value(tupleReadCtxKey{}) != nil && errors.Is(ctx.Err(), context.Canceled) {
