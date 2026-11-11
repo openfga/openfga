@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type writeOptionsMatcher struct {
@@ -130,7 +130,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "duplicate_writes",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
@@ -144,7 +143,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "same_item_appeared_in_writes_and_deletes",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			deletes: &openfgav1.WriteRequestDeletes{
 				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{items[2], items[1]},
@@ -160,7 +158,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "too_many_items_writes_and_deletes",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			deletes: &openfgav1.WriteRequestDeletes{
 				TupleKeys: items[:5],
@@ -173,7 +170,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_type_in_object_not_found",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -187,7 +183,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_type_in_user_not_found",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -201,7 +196,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_relation_in_user_not_found",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -215,7 +209,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_missing_relation",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -229,7 +222,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_relation_not_found",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -243,7 +235,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_invalid_user",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -257,7 +248,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_invalid_user_wildcard",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -271,7 +261,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_attempt_to_write_union",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -285,7 +274,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_attempt_to_write_intersection",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -299,7 +287,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_attempt_to_write_difference",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -313,7 +300,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_attempt_to_write_computed",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -327,7 +313,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_attempt_to_write_incorrect_type_restriction",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -341,7 +326,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_attempt_to_write_ttu",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -355,7 +339,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_missing_object",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -369,7 +352,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_failure_with_invalid_object",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -383,7 +365,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "write_of_implicit_tuple_should_fail",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -465,7 +446,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "good_deletes_and_writes",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			deletes: &openfgav1.WriteRequestDeletes{
@@ -482,7 +462,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "valid_with_required_condition",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
@@ -501,7 +480,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "valid_without_optional_condition",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
@@ -516,7 +494,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "valid_with_optional_condition",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
@@ -535,7 +512,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "invalid_condition_missing",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -549,7 +525,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "invalid_condition_missing_wildcard",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -564,7 +539,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "invalid_condition",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -582,7 +556,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "invalid_condition_parameters",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -600,7 +573,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "undefined_condition",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -618,7 +590,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "condition_context_exceeds_limit",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -634,52 +605,6 @@ func TestWriteCommand(t *testing.T) {
 			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@user:*'. Reason: condition context size limit exceeded: 32789 bytes exceeds 32768 bytes",
 		},
 		{
-			name: "error_model_schema_not_supported_when_writing",
-			writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{{
-					Object:   "document:1",
-					Relation: "viewer",
-					User:     "user:maria",
-				}},
-			},
-			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				model10 := parser.MustTransformDSLToProto(`
-					model
-						schema 1.0
-					type user`)
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model10, nil)
-			},
-			expectedError: "rpc error: code = Code(2000) desc = invalid schema version",
-		},
-		{
-			name: "error_model_not_found",
-			writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{{
-					Object:   "document:1",
-					Relation: "viewer",
-					User:     "user:maria",
-				}},
-			},
-			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(nil, storage.ErrNotFound)
-			},
-			expectedError: "rpc error: code = Code(2001) desc = Authorization Model '01JCC8ZD4X84K2W0H0ZA5AQ947' not found",
-		},
-		{
-			name: "error_from_database_when_reading_model",
-			writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{{
-					Object:   "document:1",
-					Relation: "viewer",
-					User:     "user:maria",
-				}},
-			},
-			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(nil, errors.New("error"))
-			},
-			expectedError: "rpc error: code = Code(4000) desc = Internal Server Error",
-		},
-		{
 			name: "error_transactional_write_failed_from_database_when_writing",
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -689,7 +614,6 @@ func TestWriteCommand(t *testing.T) {
 				}},
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.ErrTransactionalWriteFailed)
 			},
 			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
@@ -704,7 +628,6 @@ func TestWriteCommand(t *testing.T) {
 				}},
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnInsert)
 			},
 			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
@@ -719,7 +642,6 @@ func TestWriteCommand(t *testing.T) {
 				}},
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.TupleConditionConflictError(&openfgav1.TupleKey{
 					Object:   "document:1",
 					Relation: "viewer",
@@ -752,7 +674,6 @@ func TestWriteCommand(t *testing.T) {
 				}},
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnInsert)
 			},
 			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
@@ -767,7 +688,6 @@ func TestWriteCommand(t *testing.T) {
 				}},
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.TupleConditionConflictError(&openfgav1.TupleKey{
 					Object:   "document:1",
 					Relation: "viewer",
@@ -800,7 +720,6 @@ func TestWriteCommand(t *testing.T) {
 				}},
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(storage.InvalidWriteInputError(tuple.NewTupleKey("document:1", "viewer", "user:maria"), openfgav1.TupleOperation_TUPLE_OPERATION_WRITE))
 			},
@@ -884,7 +803,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "writes_with_bad_on_duplicate_option",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 			},
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
@@ -899,7 +817,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "writes_with_default_option",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(),
 					NewWriteOptsMatcher(storage.OnDuplicateInsertError, storage.OnMissingDeleteError)).Return(nil)
 			},
@@ -915,7 +832,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "writes_with_error_option",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(),
 					NewWriteOptsMatcher(storage.OnDuplicateInsertError, storage.OnMissingDeleteError)).Return(nil)
 			},
@@ -932,7 +848,6 @@ func TestWriteCommand(t *testing.T) {
 		{
 			name: "writes_with_ignore_option",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(),
 					NewWriteOptsMatcher(storage.OnDuplicateInsertIgnore, storage.OnMissingDeleteError)).Return(nil)
 			},
@@ -948,6 +863,10 @@ func TestWriteCommand(t *testing.T) {
 		},
 	}
 
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			mockController := gomock.NewController(t)
@@ -956,7 +875,7 @@ func TestWriteCommand(t *testing.T) {
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOperation)
 			test.setMock(mockDatastore)
 
-			resp, err := NewWriteCommand(mockDatastore).Execute(context.Background(), &openfgav1.WriteRequest{
+			resp, err := NewWriteCommand(mockDatastore).Execute(ctx, &openfgav1.WriteRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
 				Writes:               test.writes,
@@ -979,4 +898,11 @@ func TestWriteCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWriteCommandWithoutTypesystemInContext(t *testing.T) {
+	_, err := NewWriteCommand(mockstorage.NewMockOpenFGADatastore(gomock.NewController(t))).Execute(context.Background(), &openfgav1.WriteRequest{
+		Writes: &openfgav1.WriteRequestWrites{TupleKeys: []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "viewer", "user:maria")}},
+	})
+	require.ErrorContains(t, err, "typesystem missing in context")
 }

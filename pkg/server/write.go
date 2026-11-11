@@ -21,6 +21,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
@@ -69,7 +70,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		s.datastore,
 		commands.WithWriteCmdLogger(s.logger),
 	)
-	resp, err := cmd.Execute(ctx, &openfgav1.WriteRequest{
+	resp, err := cmd.Execute(typesystem.ContextWithTypesystem(ctx, typesys), &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Writes:               req.GetWrites(),
