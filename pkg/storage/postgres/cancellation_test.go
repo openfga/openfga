@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -31,10 +33,36 @@ func (c *cancelReadConn) Read(b []byte) (int, error) {
 	select {
 	case cancel := <-c.cancel:
 		cancel()
-		<-c.canceled
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-c.canceled:
+		case <-timer.C:
+			return 0, fmt.Errorf("waiting for pgx cancellation handler: %w", context.DeadlineExceeded)
+		}
 	default:
 	}
 	return c.Conn.Read(b)
+}
+
+func TestCancelReadConnNotificationTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		client, server := net.Pipe()
+		defer client.Close()
+		defer server.Close()
+		cancelRead := make(chan context.CancelFunc, 1)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		cancelRead <- cancel
+		conn := &cancelReadConn{Conn: client, cancel: cancelRead, canceled: make(chan struct{})}
+
+		// A missing watcher notification must fail without reaching the socket read.
+		n, err := conn.Read(make([]byte, 1))
+		require.Zero(t, n)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorContains(t, err, "waiting for pgx cancellation handler")
+		require.ErrorIs(t, ctx.Err(), context.Canceled)
+	})
 }
 
 type notifyCancellation struct {
@@ -51,9 +79,14 @@ func TestReadUserTupleCancellation(t *testing.T) {
 	for _, tc := range []struct {
 		name, object string
 		blocked      bool
+		cold         bool
+		expire       bool
 	}{
 		{name: "existing", object: "document:1"},
 		{name: "missing", object: "document:missing"},
+		{name: "existing_during_prepare", object: "document:1", cold: true},
+		{name: "missing_during_prepare", object: "document:missing", cold: true},
+		{name: "deadline_expired", object: "document:1", blocked: true, expire: true},
 		{name: "blocked_beyond_grace", object: "document:1", blocked: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -86,9 +119,11 @@ func TestReadUserTupleCancellation(t *testing.T) {
 			tk := tupleUtils.NewTupleKey("document:1", "viewer", "user:anne")
 			require.NoError(t, ds.Write(t.Context(), store, nil, storage.Writes{tk}))
 			filter := storage.ReadUserTupleFilter{Object: tk.GetObject(), Relation: tk.GetRelation(), User: tk.GetUser()}
-			// Warm the query and pool before cancelling an otherwise healthy read.
-			_, err = ds.ReadUserTuple(t.Context(), store, filter, storage.ReadUserTupleOptions{})
-			require.NoError(t, err)
+			if !tc.cold {
+				// A cold query instead cancels on Prepare's first socket read.
+				_, err = ds.ReadUserTuple(t.Context(), store, filter, storage.ReadUserTupleOptions{})
+				require.NoError(t, err)
+			}
 			connections := pool.Stat().NewConnsCount()
 			var tx pgx.Tx
 			if tc.blocked {
@@ -104,11 +139,22 @@ func TestReadUserTupleCancellation(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
+			wantErr := context.Canceled
+			if tc.expire {
+				deadlineCtx, cancelDeadline := context.WithTimeout(ctx, 100*time.Millisecond)
+				defer cancelDeadline()
+				ctx = deadlineCtx
+				wantErr = context.DeadlineExceeded
+				// Let the real deadline, rather than explicit cancellation, fire
+				// while the socket read is blocked by the exclusive table lock.
+				cancelRead <- func() { <-ctx.Done() }
+			} else {
+				cancelRead <- cancel
+			}
 			filter.Object = tc.object
-			cancelRead <- cancel
 			started := time.Now()
 			_, err = ds.ReadUserTuple(ctx, store, filter, storage.ReadUserTupleOptions{})
-			require.ErrorIs(t, err, context.Canceled)
+			require.ErrorIs(t, err, wantErr)
 			if tc.blocked {
 				require.GreaterOrEqual(t, time.Since(started), tupleReadCancellationGrace)
 				require.NoError(t, tx.Rollback(t.Context()))
@@ -145,37 +191,40 @@ func TestTupleReadCancellationDeadline(t *testing.T) {
 		{name: "expired_deadline", marked: true, budget: -time.Second},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := t.Context()
-			var cancel context.CancelFunc
-			var deadline time.Time
-			if tc.budget != 0 {
-				deadline = time.Now().Add(tc.budget)
-				ctx, cancel = context.WithDeadline(ctx, deadline)
-			} else {
-				ctx, cancel = context.WithCancel(ctx)
-			}
-			defer cancel()
-			cancel()
-			if tc.marked {
-				ctx = context.WithValue(ctx, tupleReadCtxKey{}, struct{}{})
-			}
-			conn := &deadlineConn{}
-			handler := &tupleReadCancellationHandler{DeadlineContextWatcherHandler: &pgconn.DeadlineContextWatcherHandler{Conn: conn}}
-			before := time.Now()
-			handler.HandleCancel(ctx)
-			after := time.Now()
-			switch {
-			case tc.budget > 0:
-				require.Equal(t, deadline, conn.deadline)
-			case tc.marked && tc.budget == 0:
-				require.False(t, conn.deadline.Before(before.Add(tupleReadCancellationGrace)))
-				require.False(t, conn.deadline.After(after.Add(tupleReadCancellationGrace)))
-			default:
-				require.False(t, conn.deadline.Before(before))
-				require.False(t, conn.deadline.After(after))
-			}
-			handler.HandleUnwatchAfterCancel()
-			require.True(t, conn.deadline.IsZero())
+			// Virtual time cannot advance while the handler is running.
+			synctest.Test(t, func(t *testing.T) {
+				ctx := t.Context()
+				var cancel context.CancelFunc
+				var deadline time.Time
+				if tc.budget != 0 {
+					deadline = time.Now().Add(tc.budget)
+					ctx, cancel = context.WithDeadline(ctx, deadline)
+				} else {
+					ctx, cancel = context.WithCancel(ctx)
+				}
+				defer cancel()
+				cancel()
+				if tc.marked {
+					ctx = context.WithValue(ctx, tupleReadCtxKey{}, struct{}{})
+				}
+				conn := &deadlineConn{}
+				handler := &tupleReadCancellationHandler{DeadlineContextWatcherHandler: &pgconn.DeadlineContextWatcherHandler{Conn: conn}}
+				before := time.Now()
+				handler.HandleCancel(ctx)
+				after := time.Now()
+				switch {
+				case tc.budget > 0:
+					require.Equal(t, deadline, conn.deadline)
+				case tc.marked && tc.budget == 0:
+					require.False(t, conn.deadline.Before(before.Add(tupleReadCancellationGrace)))
+					require.False(t, conn.deadline.After(after.Add(tupleReadCancellationGrace)))
+				default:
+					require.False(t, conn.deadline.Before(before))
+					require.False(t, conn.deadline.After(after))
+				}
+				handler.HandleUnwatchAfterCancel()
+				require.True(t, conn.deadline.IsZero())
+			})
 		})
 	}
 }
