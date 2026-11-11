@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgpassfile"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
@@ -112,8 +113,32 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.PingTimeout = cfg.PingTimeout
 	}
 
+	c.ConnConfig.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
+		return &tupleReadCancellationHandler{&pgconn.DeadlineContextWatcherHandler{Conn: conn.Conn()}}
+	}
 	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})
 	return c, nil
+}
+
+const tupleReadCancellationGrace = 25 * time.Millisecond
+
+type tupleReadCtxKey struct{}
+
+// Let cancelled direct reads finish briefly without discarding a healthy connection.
+// The caller's original deadline still bounds the grace period.
+type tupleReadCancellationHandler struct {
+	*pgconn.DeadlineContextWatcherHandler
+}
+
+func (h *tupleReadCancellationHandler) HandleCancel(ctx context.Context) {
+	deadline := time.Now()
+	if ctx.Value(tupleReadCtxKey{}) != nil && errors.Is(ctx.Err(), context.Canceled) {
+		deadline = deadline.Add(tupleReadCancellationGrace)
+		if budget, ok := ctx.Deadline(); ok && budget.Before(deadline) {
+			deadline = budget
+		}
+	}
+	_ = h.Conn.SetDeadline(deadline)
 }
 
 var ErrNoPassfile = errors.New("passfile does not exist")
@@ -691,6 +716,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 		return nil, HandleSQLError(err)
 	}
 	db := s.getPgxPool(options.Consistency.Preference)
+	ctx = context.WithValue(ctx, tupleReadCtxKey{}, struct{}{})
 	row := db.QueryRow(ctx, stmt, args...)
 
 	err = row.Scan(
@@ -703,6 +729,9 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 		&record.InsertedAt,
 	)
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, HandleSQLError(ctxErr)
+	}
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}

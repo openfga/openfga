@@ -18,6 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - PostgreSQL: `FindLatestAuthorizationModel` reads only the rows of the store's latest model instead of every model version, so Check and other requests without `authorization_model_id` no longer slow down as the model history grows. [#3377](https://github.com/openfga/openfga/pull/3377)
 
 ### Fixed
+- Reduced PostgreSQL connection churn when direct tuple reads are cancelled during authorization short-circuiting, while preserving request deadlines.
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
 
