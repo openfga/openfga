@@ -167,6 +167,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("trace.enabled", flags.Lookup("trace-enabled"))
 		util.MustBindEnv("trace.enabled", "OPENFGA_TRACE_ENABLED")
 
+		util.MustBindPFlag("trace.otlp.exporter", flags.Lookup("trace-otlp-exporter"))
+		util.MustBindEnv("trace.otlp.exporter", "OPENFGA_TRACE_OTLP_EXPORTER")
+
 		util.MustBindPFlag("trace.otlp.endpoint", flags.Lookup("trace-otlp-endpoint"))
 		util.MustBindEnv("trace.otlp.endpoint", "OPENFGA_TRACE_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT")
 
