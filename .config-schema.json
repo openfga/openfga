@@ -501,6 +501,13 @@
                 "otlp": {
                     "type": "object",
                     "properties": {
+                        "exporter": {
+                            "description": "The span exporter to use. 'otlp' sends spans to the trace collector at 'endpoint'. 'noop' keeps tracing enabled, so trace context is propagated and trace IDs show up in logs, but spans aren't exported and no collector is needed.",
+                            "type": "string",
+                            "enum": ["otlp", "noop"],
+                            "default": "otlp",
+                            "x-env-variable": "OPENFGA_TRACE_OTLP_EXPORTER"
+                        },
                         "endpoint": {
                             "description": "The grpc endpoint of the trace collector",
                             "type": "string",

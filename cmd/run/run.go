@@ -255,6 +255,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
+	flags.String("trace-otlp-exporter", defaultConfig.Trace.OTLP.Exporter, "the span exporter to use. 'otlp' sends spans to the trace collector, 'noop' keeps tracing on (e.g. to get trace IDs in logs) without exporting spans")
+
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
 
 	flags.Bool("trace-otlp-tls-enabled", defaultConfig.Trace.OTLP.TLS.Enabled, "use TLS connection for trace collector")
@@ -458,9 +460,14 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(contex
 		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
 
 		resolvedSampler := telemetry.ResolveSampler(config.Trace.Sampler, config.Trace.SampleRatio)
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampler is '%s' (resolved to '%s'), sampling ratio is %v, sending traces to '%s', tls: %t", config.Trace.Sampler, resolvedSampler.Description(), config.Trace.SampleRatio, endpoint, effectiveTLS))
+		if strings.EqualFold(config.Trace.OTLP.Exporter, telemetry.ExporterNoop) {
+			s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampler is '%s' (resolved to '%s'), sampling ratio is %v, exporter is 'noop' so spans aren't sent anywhere", config.Trace.Sampler, resolvedSampler.Description(), config.Trace.SampleRatio))
+		} else {
+			s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampler is '%s' (resolved to '%s'), sampling ratio is %v, sending traces to '%s', tls: %t", config.Trace.Sampler, resolvedSampler.Description(), config.Trace.SampleRatio, endpoint, effectiveTLS))
+		}
 
 		options := []telemetry.TracerOption{
+			telemetry.WithExporter(config.Trace.OTLP.Exporter),
 			telemetry.WithOTLPEndpoint(
 				config.Trace.OTLP.Endpoint,
 			),
