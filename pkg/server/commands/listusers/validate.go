@@ -31,6 +31,9 @@ func validateContextualTuples(request *openfgav1.ListUsersRequest, typeSystem *t
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}
+	if err := validation.ValidateNoConflictingContextualTuples(request.GetContextualTuples()); err != nil {
+		return serverErrors.HandleTupleValidateError(err)
+	}
 
 	return nil
 }

@@ -204,5 +204,5 @@ func validateCheckRequest(
 			return &InvalidTupleError{Cause: err}
 		}
 	}
-	return nil
+	return validation.ValidateNoConflictingContextualTuples(contextualTuples.GetTupleKeys())
 }

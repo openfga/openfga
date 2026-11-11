@@ -36,6 +36,21 @@ func (i *InvalidTupleError) Is(target error) bool {
 	return ok
 }
 
+// DuplicateContextualTupleError is returned if a request has more than one contextual tuple
+// with the same user, relation and object, and their conditions differ.
+type DuplicateContextualTupleError struct {
+	TupleKey TupleWithCondition
+}
+
+func (i *DuplicateContextualTupleError) Error() string {
+	return fmt.Sprintf("Duplicate contextual tuple '%s' with a different condition", TupleKeyWithConditionToString(i.TupleKey))
+}
+
+func (i *DuplicateContextualTupleError) Is(target error) bool {
+	_, ok := target.(*DuplicateContextualTupleError)
+	return ok
+}
+
 type TypeNotFoundError struct {
 	TypeName string
 }

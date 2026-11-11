@@ -160,6 +160,11 @@ func HandleTupleValidateError(err error) error {
 			codes.Code(openfgav1.ErrorCode_validation_error),
 			err.Error(),
 		)
+	case *tuple.DuplicateContextualTupleError:
+		return status.Error(
+			codes.Code(openfgav1.ErrorCode_duplicate_contextual_tuple),
+			err.Error(),
+		)
 	}
 
 	return HandleError("", err)
