@@ -200,7 +200,7 @@ func validateCheckRequest(
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.
 	for _, ctxTuple := range contextualTuples.GetTupleKeys() {
-		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+		if err := validation.ValidateContextualTuple(typesys, ctxTuple); err != nil {
 			return &InvalidTupleError{Cause: err}
 		}
 	}

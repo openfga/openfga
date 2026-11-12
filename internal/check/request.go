@@ -10,6 +10,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -127,6 +129,9 @@ func NewRequest(p RequestParams) (*Request, error) {
 
 	for _, t := range p.ContextualTuples {
 		if err := validateCtxTupleInModel(p.Model, t); err != nil {
+			return nil, err
+		}
+		if err := validation.ValidateConditionContextSize(t, config.DefaultWriteContextByteLimit); err != nil {
 			return nil, err
 		}
 	}

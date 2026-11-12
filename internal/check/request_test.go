@@ -9,6 +9,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -684,6 +685,23 @@ func TestContextualTuplesValidation(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
+		var tupleErr *tuple.InvalidTupleError
+		require.ErrorAs(t, err, &tupleErr)
+	})
+
+	t.Run("returns_error_when_contextual_tuple_condition_context_exceeds_limit", func(t *testing.T) {
+		_, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "commenter", "user:alice"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:2", "commenter", "user:*", "xcond",
+					testutils.MustNewStruct(t, map[string]any{
+						"x": testutils.CreateRandomString(config.DefaultWriteContextByteLimit + 1),
+					})),
+			},
+		})
+		require.ErrorContains(t, err, "condition context size limit exceeded")
 		var tupleErr *tuple.InvalidTupleError
 		require.ErrorAs(t, err, &tupleErr)
 	})

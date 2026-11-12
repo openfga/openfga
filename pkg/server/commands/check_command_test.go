@@ -40,6 +40,11 @@ type doc
 	relations
 		define viewer: [user]
 		define viewer_computed: viewer
+		define conditional_viewer: [user with condition1]
+
+condition condition1(param1: string) {
+	param1 == 'ok'
+}
 `)
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
@@ -95,6 +100,24 @@ type doc
 			},
 		})
 		require.ErrorContains(t, err, "type 'invalid' not found")
+	})
+
+	t.Run("validates_contextual_tuple_condition_context_size", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		_, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "conditional_viewer", "user:1"),
+			ContextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					// Write rejects this tuple, so Check must reject it as a contextual tuple too.
+					tuple.NewTupleKeyWithCondition("doc:1", "conditional_viewer", "user:1", "condition1",
+						testutils.MustNewStruct(t, map[string]any{
+							"param1": testutils.CreateRandomString(config.DefaultWriteContextByteLimit + 1),
+						})),
+				},
+			},
+		})
+		require.ErrorContains(t, err, "condition context size limit exceeded")
 	})
 
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
