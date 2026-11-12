@@ -39,7 +39,10 @@ type checkTests struct {
 type testParams struct {
 	schemaVersion string
 	contextual    bool
-	client        tests.ClientInterface
+	// inline runs the matrix with every named condition turned into the
+	// equivalent $expression tuple. See check_inline.go.
+	inline bool
+	client tests.ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -205,6 +208,17 @@ func RunMatrixTests(t *testing.T, engine string, name string, client tests.Clien
 	t.Run("test_matrix_"+engine+"_experimental_"+name, func(t *testing.T) {
 		t.Parallel()
 		runTestMatrix(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, client: client})
+	})
+}
+
+// RunInlineMatrixTests runs the matrix with every named condition replaced by
+// the equivalent $expression tuple. The expected results are the same: the two
+// kinds of condition must agree. The server behind client needs the
+// inline_expressions experimental flag.
+func RunInlineMatrixTests(t *testing.T, engine string, name string, client tests.ClientInterface) {
+	t.Run("test_inline_matrix_"+engine+"_experimental_"+name, func(t *testing.T) {
+		t.Parallel()
+		runTestMatrix(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, inline: true, client: client})
 	})
 }
 
@@ -1232,6 +1246,10 @@ condition xcond(x: string) {
 		stages = append(stages, complexityThreeTestingModelTest...)
 		stages = append(stages, complexityFourTestingModelTest...)
 		stages = append(stages, usersetCompleteTestingModelTest...)
+		if params.inline {
+			model = InlineMatrixModel(model)
+			stages = inlineMatrixStages(stages)
+		}
 		for _, stage := range stages {
 			t.Run("stage_"+stage.Name, func(t *testing.T) {
 				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})

@@ -41,6 +41,19 @@ func TestContextualTuplesMemory(t *testing.T) {
 	})
 }
 
+// TestInlineContextualTuplesMemory runs the matrix with every tuple sent as a
+// contextual tuple and every named condition replaced by $expression.
+func TestInlineContextualTuplesMemory(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	client := tests.BuildClientInterface(t, "memory", []string{config.ExperimentalWeightedGraphCheck, config.ExperimentalInlineExpressions})
+	t.Run("test_inline_matrix_contextual_experimental", func(t *testing.T) {
+		t.Parallel()
+		runTestMatrix(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, contextual: true, inline: true, client: client})
+	})
+}
+
 func TestMatrixMemory(t *testing.T) {
 	runMatrixWithEngine(t, "memory")
 }
@@ -92,6 +105,7 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 	for _, tc := range cases {
 		client := tests.BuildClientInterface(t, engine, tc.experimentals)
 		RunMatrixTests(t, engine, tc.name, client)
+		RunInlineMatrixTests(t, engine, tc.name, client)
 	}
 }
 

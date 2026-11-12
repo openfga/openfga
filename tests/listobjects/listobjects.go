@@ -38,7 +38,10 @@ type listObjectTests struct {
 
 type testParams struct {
 	schemaVersion string
-	client        tests.ClientInterface
+	// inline runs the matrix with every named condition turned into the
+	// equivalent $expression tuple.
+	inline bool
+	client tests.ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -66,6 +69,21 @@ func RunMatrixTests(t *testing.T, engine string, desc string, client tests.Clien
 		t.Parallel()
 		runTestMatrix(t, testParams{
 			schemaVersion: typesystem.SchemaVersion1_1,
+			client:        client,
+		})
+	})
+}
+
+// RunInlineMatrixTests runs the matrix with every named condition replaced by
+// the equivalent $expression tuple. The expected results are the same: the two
+// kinds of condition must agree. The server behind client needs the
+// inline_expressions experimental flag.
+func RunInlineMatrixTests(t *testing.T, engine string, desc string, client tests.ClientInterface) {
+	t.Run("test inline matrix "+engine+" "+desc, func(t *testing.T) {
+		t.Parallel()
+		runTestMatrix(t, testParams{
+			schemaVersion: typesystem.SchemaVersion1_1,
+			inline:        true,
 			client:        client,
 		})
 	})

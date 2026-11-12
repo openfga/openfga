@@ -58,6 +58,7 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 	for _, tc := range cases {
 		client := tests.BuildClientInterface(t, engine, tc.experimentals)
 		RunMatrixTests(t, engine, tc.name, client)
+		RunInlineMatrixTests(t, engine, tc.name, client)
 	}
 }
 

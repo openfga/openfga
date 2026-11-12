@@ -13,6 +13,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/testutils"
+	checktests "github.com/openfga/openfga/tests/check"
 )
 
 // MustNewStruct returns a new *structpb.Struct or panics
@@ -194,13 +195,18 @@ func runTestMatrix(t *testing.T, params testParams) {
 
 	t.Run(name, func(t *testing.T) {
 		tests := matrix.Tests
+		model := matrix.Model
+		if params.inline {
+			model = checktests.InlineMatrixModel(model)
+			tests = inlineMatrixTests(tests)
+		}
 
 		for _, test := range tests {
 			t.Run("test_"+test.Name, func(t *testing.T) {
 				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: test.Name})
 				require.NoError(t, err)
 				storeID := resp.GetId()
-				modelProto := parser.MustTransformDSLToProto(matrix.Model)
+				modelProto := parser.MustTransformDSLToProto(model)
 				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
 					SchemaVersion:   schemaVersion,
@@ -235,4 +241,21 @@ func runTestMatrix(t *testing.T, params testParams) {
 			})
 		}
 	})
+}
+
+// inlineMatrixTests returns a copy of the tests whose tuples use $expression
+// instead of the named condition. The tests passed in are shared by tests that
+// run in parallel and are not modified.
+func inlineMatrixTests(tests []matrixTest) []matrixTest {
+	out := make([]matrixTest, 0, len(tests))
+	for _, test := range tests {
+		copied := matrixTest{Name: test.Name, Tuples: checktests.InlineMatrixTuples(test.Tuples)}
+		for _, a := range test.ListObjectAssertions {
+			assertion := *a
+			assertion.ContextualTuples = checktests.InlineMatrixTuples(a.ContextualTuples)
+			copied.ListObjectAssertions = append(copied.ListObjectAssertions, &assertion)
+		}
+		out = append(out, copied)
+	}
+	return out
 }
