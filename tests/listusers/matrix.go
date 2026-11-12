@@ -25,28 +25,13 @@ import (
 	"github.com/openfga/openfga/tests"
 )
 
-// The ListUsers matrix.
-//
-// It runs against the same model as the ListObjects matrix (internal/test/matrixmodel), but the assertions are written
-// for ListUsers: each one fixes an object, a relation and a user filter, and states the exact set of users expected.
-//
-// Check (the weighted-graph resolver, enabled with ExperimentalWeightedGraphCheck) is the specification. Besides
-// comparing against the expectation, the runner verifies every response against Check:
-//
-//	soundness:    every concrete user returned passes Check
-//	completeness: every candidate user (taken from the tuples) that passes Check is either returned or covered by the
-//	              type's public wildcard, which is then returned
-//	wildcard:     the wildcard is returned exactly when an unseen user of the filter type passes Check
-//	no self:      a userset filter never returns the queried object#relation itself
-//
-// An assertion whose LegacyDiverges is set documents a case where the current (recursive) ListUsers implementation is
-// known to disagree with Check. Those assertions are skipped by default; set LU_MATRIX_RUN_LEGACY_DIVERGENCES=1 to run
-// them (they fail against that implementation, and are expected to pass against the pipeline).
+// ListUsers matrix over the shared matrix model. Check (weighted-graph resolver) is the specification: every response
+// is verified against it (soundness, completeness, wildcard, no self). Assertions marked LegacyDiverges are skipped
+// unless LU_MATRIX_RUN_LEGACY_DIVERGENCES=1.
 
 const runLegacyDivergencesEnv = "LU_MATRIX_RUN_LEGACY_DIVERGENCES"
 
-// unseenProbeID is a user id that never appears in any matrix tuple. Check on typed wildcards is rejected under
-// intersection and exclusion, so an unseen user stands in for "everyone else", which is what the wildcard grants.
+// unseenProbeID never appears in a tuple; it stands in for the wildcard, since Check rejects typed wildcards under and/but not.
 const unseenProbeID = "matrix_unseen_probe"
 
 type matrixAssertion struct {

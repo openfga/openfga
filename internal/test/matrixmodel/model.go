@@ -1,10 +1,7 @@
 // Package matrixmodel holds the authorization model shared by the ListObjects and ListUsers matrix test suites.
 package matrixmodel
 
-// Model is the DSL of the shared matrix model. Both suites run their assertions against this exact string.
-//
-// userset_to_recursive is a non-recursive entry into the recursive userset relation userset_recursive. It exists for
-// the ListUsers userset-filter cases and is not queried by any ListObjects assertion.
+// Model is the DSL both matrix suites run against. userset_to_recursive is only queried by the ListUsers matrix.
 const Model = `model
   schema 1.1
 type user
