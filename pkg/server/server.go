@@ -1001,8 +1001,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	// below this point, don't throw errors or we may leak resources in tests
 
 	if !s.contextPropagationToDatastore {
-		// Creates a new [storagewrappers.ContextTracerWrapper] that will execute datastore queries using
-		// a new background context with the current trace context. Querier statements are bounded by the request timeout.
+		// Creates a new [storagewrappers.ContextTracerWrapper] to execute datastore queries using a new background
+		// context with the current trace context. Querier statements are bounded by server-defined requestTimeout.
 		s.datastore = storagewrappers.NewContextWrapper(s.datastore, storagewrappers.WithContextWrapperQueryTimeout(s.requestTimeout))
 	}
 
