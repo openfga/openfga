@@ -63,6 +63,20 @@ func handleForwardResponseTrailer(w http.ResponseWriter, md runtime.ServerMetada
 	}
 }
 
+// MaxBytesMiddleware rejects requests whose Content-Length exceeds limit with
+// 413 and wraps the body with http.MaxBytesReader so oversized chunked bodies
+// are also caught when the handler reads them.
+func MaxBytesMiddleware(limit int64, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > limit {
+			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // CustomHTTPErrorHandler handles custom error objects in the context of HTTP requests.
 // It is similar to [runtime.DefaultHTTPErrorHandler] but accepts an [*errors.EncodedError] object.
 func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err *errors.EncodedError) {

@@ -76,6 +76,8 @@ const (
 	DefaultMaxChecksPerBatchCheck           = 50
 	DefaultMaxConcurrentChecksPerBatchCheck = 50
 
+	DefaultMaxContextualTuples uint32 = 100
+
 	DefaultListObjectsDispatchThrottlingEnabled          = false
 	DefaultListObjectsDispatchThrottlingFrequency        = 10 * time.Microsecond
 	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
@@ -403,6 +405,9 @@ type Config struct {
 	// that can be passed in each BatchCheck request.
 	MaxChecksPerBatchCheck uint32
 
+	// MaxContextualTuples defines the maximum number of contextual tuples allowed per request.
+	MaxContextualTuples uint32
+
 	// MaxConcurrentChecksPerBatchCheck defines the maximum number of checks
 	// that can be run in simultaneously
 	MaxConcurrentChecksPerBatchCheck uint32
@@ -502,6 +507,10 @@ func (cfg *Config) VerifyServerSettings() error {
 
 	if cfg.GRPC.MaxRecvMsgBytes <= 0 {
 		return fmt.Errorf("config 'grpc.maxRecvMsgBytes' must be greater than 0")
+	}
+
+	if cfg.MaxContextualTuples == 0 {
+		return errors.New("'maxContextualTuples' must be greater than zero")
 	}
 
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
@@ -861,6 +870,7 @@ func DefaultConfig() *Config {
 		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
 		MaxChecksPerBatchCheck:                    DefaultMaxChecksPerBatchCheck,
 		MaxConcurrentChecksPerBatchCheck:          DefaultMaxConcurrentChecksPerBatchCheck,
+		MaxContextualTuples:                       DefaultMaxContextualTuples,
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
 		MaxConcurrentReadsForListUsers:            DefaultMaxConcurrentReadsForListUsers,

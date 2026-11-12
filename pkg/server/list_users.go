@@ -54,6 +54,10 @@ func (s *Server) ListUsers(
 		}
 	}
 
+	if err := s.checkContextualTupleCount(len(req.GetContextualTuples())); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	// TODO: This should be apimethod.ListUsers, but is it considered a breaking change to move?
 	const methodName = "listusers"
 

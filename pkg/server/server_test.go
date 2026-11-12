@@ -242,6 +242,18 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 	})
 }
 
+func TestNewServer_DefaultMaxContextualTuples(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	s := MustNewServerWithOpts(WithDatastore(ds))
+	t.Cleanup(s.Close)
+
+	require.Equal(t, serverconfig.DefaultMaxContextualTuples, s.maxContextualTuples)
+}
+
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 	// skipping sqlite here because the lowest supported schema revision is 4
 	engines := []string{"postgres", "mysql"}
