@@ -182,10 +182,29 @@ type TypeSystem struct {
 	schemaVersion           string
 	authorizationModelGraph *graph.AuthorizationModelGraph
 	authzWeightedGraph      *graph.WeightedAuthorizationModelGraph
+	// weightedGraphBuildError records why authzWeightedGraph is nil when the
+	// weighted graph failed to build. The error is not propagated (see the
+	// TODO in attachGraphs: propagation requires a deprecation cycle), but it
+	// is retrievable so callers can surface the silent fallback.
+	weightedGraphBuildError error
 }
 
 func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
 	return t.authzWeightedGraph
+}
+
+// WeightedGraphBuildError returns the error encountered while building the
+// weighted authorization-model graph, or nil when the graph built
+// successfully. A non-nil error means the TypeSystem silently fell back to
+// evaluating every relation through the default Check evaluator: the
+// weight-two fast paths and the optimized ListObjects pipeline are disabled
+// model-wide even though the model itself passed validation (e.g., a TTU
+// whose computed relation is missing on one of the tupleset's directly
+// related types). Surfacing this at model-write time lets an operator see
+// that a model edit changed the evaluation strategy before it affects
+// production traffic. See issue #3306.
+func (t *TypeSystem) WeightedGraphBuildError() error {
+	return t.weightedGraphBuildError
 }
 
 // newWithoutGraphs builds a *TypeSystem from an authorization model, populating all fields except
@@ -271,12 +290,15 @@ func (t *TypeSystem) attachGraphs(model *openfgav1.AuthorizationModel) error {
 	// relation), authzWeightedGraph is set to nil here. At query time, every weighted-graph-gated
 	// path (UsersetUseWeight2Resolver, TTUUseWeight2Resolver, the optimized ListObjects pipeline)
 	// nil-guards off. Answers stay correct — DirectlyRelatedUsersets and related helpers skip
-	// GetRelation() == "" — but performance silently degrades. Worth its own audit and PR to
-	// surface this error rather than discard it.
-	weightedGraph, _ := wgb.Build(model)
+	// GetRelation() == "" — but performance silently degrades. The build error is now recorded in
+	// weightedGraphBuildError and surfaced at model-write time (see WeightedGraphBuildError and
+	// the WriteAuthorizationModel command), so the fallback is no longer fully silent. Full error
+	// propagation remains deferred to the deprecation cycle above.
+	weightedGraph, buildErr := wgb.Build(model)
 
 	t.authorizationModelGraph = authorizationModelGraph
 	t.authzWeightedGraph = weightedGraph
+	t.weightedGraphBuildError = buildErr
 	return nil
 }
 
