@@ -22,7 +22,7 @@ var directs = []matrixTest{
 			assertion("directs:lu1", "computed_3_times", "employee", nil),
 			assertion("directs:lu1", "other_rel", "employee", nil, "employee:e"),
 			assertion("directs:lu1", "other_rel", "user", nil),
-			failing("directs:lu1", "direct_comb", "user", nil, 2000), // the condition needs `x`
+			failing("directs:lu1", "direct_comb", "user"), // the condition needs `x`
 		},
 	},
 	{

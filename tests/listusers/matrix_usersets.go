@@ -46,6 +46,7 @@ var usersets = []matrixTest{
 			assertion("usersets-user:uc1", "userset_combined_cond", "employee", validConditionContext, "employee:e"),
 			assertion("usersets-user:uc1", "userset_combined_cond", "directs#computed_mult_types", validConditionContext, "directs:ud#computed_mult_types"),
 			assertion("usersets-user:uc1", "userset_combined_cond", "directs#computed_mult_types", invalidConditionContext),
+			failing("usersets-user:uc1", "userset_combined_cond", "user"), // the userset tuple's condition needs `x`
 		},
 	},
 	{

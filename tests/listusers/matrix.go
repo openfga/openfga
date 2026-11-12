@@ -29,7 +29,12 @@ import (
 // is verified against it (soundness, completeness, wildcard, no self). Assertions marked LegacyDiverges are skipped
 // unless LU_MATRIX_RUN_LEGACY_DIVERGENCES=1.
 
-const runLegacyDivergencesEnv = "LU_MATRIX_RUN_LEGACY_DIVERGENCES"
+const (
+	runLegacyDivergencesEnv = "LU_MATRIX_RUN_LEGACY_DIVERGENCES"
+
+	// The API error code returned when a condition cannot be evaluated.
+	validationErrorCode = 2000
+)
 
 // unseenProbeID never appears in a tuple; it stands in for the wildcard, since Check rejects typed wildcards under and/but not.
 const unseenProbeID = "matrix_unseen_probe"
@@ -82,13 +87,13 @@ func t3c(object, relation, user string) *openfgav1.TupleKey {
 }
 
 // assertion builds a successful assertion: the users expected for (object, relation) under a single filter.
-func assertion(object, relation, filter string, context *structpb.Struct, expected ...string) matrixAssertion {
+func assertion(object, relation, filter string, reqContext *structpb.Struct, expected ...string) matrixAssertion {
 	if expected == nil {
 		expected = []string{}
 	}
 	return matrixAssertion{Assertion: listuserstest.Assertion{
 		Request:     &listuserstest.TestListUsersRequest{Object: object, Relation: relation, Filters: []string{filter}},
-		Context:     context,
+		Context:     reqContext,
 		Expectation: expected,
 	}}
 }
@@ -99,12 +104,11 @@ func diverges(a matrixAssertion, reason string) matrixAssertion {
 	return a
 }
 
-// failing builds an assertion that must fail with the given gRPC code.
-func failing(object, relation, filter string, context *structpb.Struct, code int) matrixAssertion {
+// failing builds an assertion that must fail with a validation error (the condition context is missing).
+func failing(object, relation, filter string) matrixAssertion {
 	return matrixAssertion{Assertion: listuserstest.Assertion{
 		Request:   &listuserstest.TestListUsersRequest{Object: object, Relation: relation, Filters: []string{filter}},
-		Context:   context,
-		ErrorCode: code,
+		ErrorCode: validationErrorCode,
 	}}
 }
 
@@ -245,8 +249,7 @@ func checkAssertion(
 	}
 
 	// completeness
-	covered := false
-	_, covered = returned[wildcard]
+	_, covered := returned[wildcard]
 	for _, u := range candidates(test, a, filterType, filterRelation) {
 		if _, ok := returned[u]; ok {
 			continue
