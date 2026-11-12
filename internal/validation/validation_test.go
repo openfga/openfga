@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -12,6 +13,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -1633,8 +1635,10 @@ condition in_region(region: string, note: string) {
 			}))
 		err := ValidateContextualTuple(ts, tk)
 		require.ErrorContains(t, err, "condition context size limit exceeded")
-		var invalidTupleErr *tuple.InvalidTupleError
-		require.ErrorAs(t, err, &invalidTupleErr)
+		// same error type as the other condition errors, so it maps to validation_error like Write.
+		var conditionErr *tuple.InvalidConditionalTupleError
+		require.ErrorAs(t, err, &conditionErr)
+		require.Equal(t, int32(openfgav1.ErrorCode_validation_error), int32(status.Code(serverErrors.HandleTupleValidateError(err))))
 	})
 
 	t.Run("still_runs_write_validation", func(t *testing.T) {

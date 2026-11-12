@@ -157,7 +157,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 			err = validation.ValidateConditionContextSize(tk, c.conditionContextByteLimit)
 			if err != nil {
-				return serverErrors.ValidationError(err)
+				return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{Cause: err, TupleKey: tk})
 			}
 		}
 	}

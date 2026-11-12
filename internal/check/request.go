@@ -132,7 +132,7 @@ func NewRequest(p RequestParams) (*Request, error) {
 			return nil, err
 		}
 		if err := validation.ValidateConditionContextSize(t, config.DefaultWriteContextByteLimit); err != nil {
-			return nil, err
+			return nil, &tuple.InvalidTupleError{Cause: err, TupleKey: t}
 		}
 	}
 

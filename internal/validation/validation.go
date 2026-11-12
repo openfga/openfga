@@ -59,12 +59,17 @@ func ValidateTupleForWrite(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKe
 
 // ValidateContextualTuple returns nil if a contextual tuple is valid according to the provided model.
 // Contextual tuples mimic tuples written to the datastore, so they get the same checks as a Write:
-// [ValidateTupleForWrite] plus the default condition context size limit.
+// [ValidateTupleForWrite] plus the default Write condition context size limit
+// (config.DefaultWriteContextByteLimit; a limit set with server.WithConditionContextByteLimit only applies to Write).
+// An oversized context is reported like the other condition errors, as a [tuple.InvalidConditionalTupleError].
 func ValidateContextualTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateTupleForWrite(typesys, tk); err != nil {
 		return err
 	}
-	return ValidateConditionContextSize(tk, config.DefaultWriteContextByteLimit)
+	if err := ValidateConditionContextSize(tk, config.DefaultWriteContextByteLimit); err != nil {
+		return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
+	}
+	return nil
 }
 
 // ValidateConditionContextSize returns an error if the encoded size of the tuple's
@@ -72,10 +77,7 @@ func ValidateContextualTuple(typesys *typesystem.TypeSystem, tk *openfgav1.Tuple
 func ValidateConditionContextSize(tk *openfgav1.TupleKey, limit int) error {
 	contextSize := proto.Size(tk.GetCondition().GetContext())
 	if contextSize > limit {
-		return &tuple.InvalidTupleError{
-			Cause:    fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", contextSize, limit),
-			TupleKey: tk,
-		}
+		return fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", contextSize, limit)
 	}
 	return nil
 }

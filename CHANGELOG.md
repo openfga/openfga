@@ -20,7 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
-- Contextual tuples now get the same 32 KB condition context size limit as tuples sent to `Write`. Check, BatchCheck, ListObjects, StreamedListObjects, ListUsers, Expand and WriteAssertions used to accept a contextual tuple whose condition context `Write` rejects. [#3414](https://github.com/openfga/openfga/pull/3414)
+- Contextual tuples now get the default `Write` condition context size limit (32 KB; a limit set with `WithConditionContextByteLimit` still only applies to `Write`). Check, BatchCheck, ListObjects, StreamedListObjects, ListUsers, Expand and WriteAssertions used to accept a contextual tuple whose condition context `Write` rejects. [#3414](https://github.com/openfga/openfga/pull/3414)
 
 ## [1.22.1] - 2026-10-27
 ### Changed
