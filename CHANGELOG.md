@@ -17,7 +17,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
 - PostgreSQL: `FindLatestAuthorizationModel` reads only the rows of the store's latest model instead of every model version, so Check and other requests without `authorization_model_id` no longer slow down as the model history grows. [#3377](https://github.com/openfga/openfga/pull/3377)
 - `Querier` statements now ignore client cancellation and client deadlines, so a cancelled request doesn't abort an in-flight query and churn database connections; instead they are bounded by `--request-timeout`. This applies unless `--context-propagation-to-datastore` is enabled. [#3401](https://github.com/openfga/openfga/pull/3401)
-  - This change only affects the new `Querier` path, which is currently unused. 
+  - This change only affects the new `Querier` path, which is currently unused.
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
