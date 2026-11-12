@@ -1,9 +1,11 @@
 package migrate_test
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/cmd/util"
@@ -43,4 +45,35 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMigratePostgresRebuildsInvalidIndex(t *testing.T) {
+	_, _, uri := util.MustBootstrapDatastore(t, "postgres")
+
+	db, err := sql.Open("pgx", uri)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	cfg := migrate.MigrationConfig{
+		Engine:      "postgres",
+		URI:         uri,
+		Timeout:     5 * time.Second,
+		PingTimeout: 1 * time.Second,
+	}
+
+	// Roll back to the state before the rebuild migration, then leave idx_user_lookup
+	// as a failed CREATE INDEX CONCURRENTLY leaves it.
+	cfg.TargetVersion = 6
+	require.NoError(t, migrate.RunMigrations(cfg))
+
+	_, err = db.Exec(`UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'idx_user_lookup'::regclass`)
+	require.NoError(t, err)
+
+	cfg.TargetVersion = 0
+	require.NoError(t, migrate.RunMigrations(cfg))
+
+	var valid bool
+	err = db.QueryRow(`SELECT indisvalid FROM pg_index WHERE indexrelid = 'idx_user_lookup'::regclass`).Scan(&valid)
+	require.NoError(t, err)
+	require.True(t, valid)
 }
