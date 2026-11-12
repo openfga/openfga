@@ -264,33 +264,29 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		return nil, err
 	}
 
-	// Always tee stdout (wrapped to strip the bridge-only context field) with
-	// the OTEL core. When OTLP is not configured the OTEL side is a NopCore;
-	// only a real OTEL core is level-wrapped.
-	otelCore := zapcore.NewNopCore()
+	// Wrap the built core only when a real OTEL core is present. Without one,
+	// the core is left untouched so the default path matches a plain zap
+	// logger (no tee, no NopCore, no contextFilterCore).
 	if hasOTELCore {
 		// The otelzap core enables all levels by default (filtering is deferred
 		// to the OTEL SDK), so raise it to the configured level to keep OTLP
-		// export consistent with stdout. NopCore needs no level wrapping.
-		otelCore, err = zapcore.NewIncreaseLevelCore(logOptions.otelCore, level)
+		// export consistent with stdout.
+		otelCore, err := zapcore.NewIncreaseLevelCore(logOptions.otelCore, level)
 		if err != nil {
 			return nil, fmt.Errorf("failed to apply log level to the OTEL core: %w", err)
 		}
-	}
 
-	log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-		tee := zapcore.NewTee(&contextFilterCore{Core: c}, otelCore)
-		if !hasOTELCore {
-			return tee
-		}
-		// Wrap the combined core in the production sampler so both sinks
-		// receive the identical sampled stream.
-		var samplerOpts []zapcore.SamplerOption
-		if sampling.Hook != nil {
-			samplerOpts = append(samplerOpts, zapcore.SamplerHook(sampling.Hook))
-		}
-		return zapcore.NewSamplerWithOptions(tee, time.Second, sampling.Initial, sampling.Thereafter, samplerOpts...)
-	}))
+		log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			tee := zapcore.NewTee(&contextFilterCore{Core: c}, otelCore)
+			// Wrap the combined core in the production sampler so both sinks
+			// receive the identical sampled stream.
+			var samplerOpts []zapcore.SamplerOption
+			if sampling.Hook != nil {
+				samplerOpts = append(samplerOpts, zapcore.SamplerHook(sampling.Hook))
+			}
+			return zapcore.NewSamplerWithOptions(tee, time.Second, sampling.Initial, sampling.Thereafter, samplerOpts...)
+		}))
+	}
 
 	if logOptions.format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
@@ -312,14 +308,14 @@ func (c *contextFilterCore) With(fields []zapcore.Field) zapcore.Core {
 	return &contextFilterCore{Core: c.Core.With(filterContextFields(fields))}
 }
 
-// Check asks the wrapped core whether the entry is admitted, so that its
-// level and sampling logic still apply, then registers this core rather than
-// the wrapped one so Write can strip context fields before stdout sees them.
+// Check registers this core rather than the wrapped one so Write can strip
+// context fields before stdout sees them. Sampling is applied outside the tee
+// and the wrapped core is a plain ioCore, so a level check is enough.
 func (c *contextFilterCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	if c.Core.Check(entry, nil) == nil {
-		return ce
+	if c.Enabled(entry.Level) {
+		return ce.AddCore(entry, c)
 	}
-	return ce.AddCore(entry, c)
+	return ce
 }
 
 func (c *contextFilterCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {

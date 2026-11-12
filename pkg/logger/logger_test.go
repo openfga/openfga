@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -245,45 +244,14 @@ func countLines(t *testing.T, path string) int {
 	return strings.Count(string(data), "\n")
 }
 
-func TestSamplingDropsRepeatedEntries(t *testing.T) {
+func TestDefaultPathSamplingUnchanged(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "out.log")
 	l, err := NewLogger(WithLevel("info"), WithOutputPaths(out))
 	require.NoError(t, err)
+	require.False(t, l.hasOTELCore)
 
-	const total = 500
-	for i := 0; i < total; i++ {
-		l.Info("repeated message")
-	}
-
-	// Repeated identical messages beyond the sampler's budget must be dropped,
-	// matching zap's production behavior.
-	lines := countLines(t, out)
-	require.GreaterOrEqual(t, lines, 100)
-	require.Less(t, lines, total)
-}
-
-func TestDefaultPathTeesNopCore(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "out.log")
-	l, err := NewLogger(WithLevel("info"), WithOutputPaths(out))
-	require.NoError(t, err)
-
-	// The default path must still apply the unconditional tee, so the top-level
-	// core is the multiCore slice returned by zapcore.NewTee with a filtered
-	// stdout core and a NopCore. Walking it by reflection is the only way to
-	// observe the tee's shape (a NopCore is behaviorally invisible).
-	v := reflect.ValueOf(l.Core())
-	require.Equal(t, reflect.Slice, v.Kind())
-
-	cores := make([]zapcore.Core, v.Len())
-	for i := 0; i < v.Len(); i++ {
-		cores[i] = v.Index(i).Interface().(zapcore.Core)
-	}
-	require.Len(t, cores, 2)
-	require.IsType(t, &contextFilterCore{}, cores[0])
-	require.IsType(t, zapcore.NewNopCore(), cores[1])
-
-	// Sampling is unchanged: repeated identical messages beyond the production
-	// sampler's budget are still dropped on the stdout side (D18).
+	// With no OTEL core the built core is left untouched, so the production
+	// sampler still drops repeated identical messages beyond its budget.
 	const total = 500
 	for i := 0; i < total; i++ {
 		l.Info("repeated message")
