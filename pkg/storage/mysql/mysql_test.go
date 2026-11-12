@@ -1434,12 +1434,63 @@ func TestIsReady_SecondaryError(t *testing.T) {
 
 	// Inject the broken secondary directly.
 	ds.secondaryDB = closedDB
+	ds.secondaryHealthDB = closedDB
 
 	status, err := ds.IsReady(context.Background())
 	require.NoError(t, err)
 	require.False(t, status.IsReady)
 	require.Contains(t, status.Message, "primary:")
 	require.Contains(t, status.Message, "secondary:")
+}
+
+// TestIsReady_SaturatedPools verifies that IsReady does not wait for a connection
+// of the databases serving queries when all of their connections are in use.
+func TestIsReady_SaturatedPools(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = testDatastore.GetSecondaryConnectionURI(true)
+	cfg.MaxOpenConns = 1
+
+	ds, err := New(testDatastore.GetConnectionURI(true), cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	primaryConn, err := ds.primaryDB.Conn(context.Background())
+	require.NoError(t, err)
+	defer primaryConn.Close()
+
+	secondaryConn, err := ds.secondaryDB.Conn(context.Background())
+	require.NoError(t, err)
+	defer secondaryConn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	status, err := ds.IsReady(ctx)
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+}
+
+// TestClose_ClosesHealthCheckDBs verifies that Close closes the databases
+// dedicated to readiness checks for both the primary and the secondary.
+func TestClose_ClosesHealthCheckDBs(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = testDatastore.GetSecondaryConnectionURI(true)
+
+	ds, err := New(testDatastore.GetConnectionURI(true), cfg)
+	require.NoError(t, err)
+	ds.Close()
+
+	require.Error(t, ds.primaryHealthDB.PingContext(context.Background()))
+	require.Error(t, ds.secondaryHealthDB.PingContext(context.Background()))
 }
 
 // TestClose_WithSecondaryAndCollector verifies that Close correctly unregisters
