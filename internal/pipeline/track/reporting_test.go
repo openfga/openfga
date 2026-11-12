@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/track"
+	"github.com/openfga/openfga/internal/pipeline/track"
 )
 
 func TestStatusPoolWaitWithNoReporters(t *testing.T) {

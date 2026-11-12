@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
+	"github.com/openfga/openfga/internal/pipeline/worker"
 )
 
 func TestEmptyReceiver_ReturnsNotOkImmediately(t *testing.T) {

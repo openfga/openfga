@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/track"
+	"github.com/openfga/openfga/internal/pipeline/track"
 )
 
 // Membership represents a worker's participation in a [CycleGroup].

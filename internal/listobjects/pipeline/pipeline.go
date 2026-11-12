@@ -14,7 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers/mpsc"
-	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
+	"github.com/openfga/openfga/internal/pipeline/worker"
 )
 
 type (

@@ -17,7 +17,7 @@ import (
 
 	"github.com/openfga/openfga/internal/containers/mpsc"
 	"github.com/openfga/openfga/internal/listobjects/pipeline"
-	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
+	"github.com/openfga/openfga/internal/pipeline/worker"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"

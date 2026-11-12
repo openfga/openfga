@@ -18,7 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/containers/mpsc"
 )
 
-var tracer = otel.Tracer("openfga/internal/listobjects/pipeline/internal/worker")
+var tracer = otel.Tracer("openfga/internal/pipeline/worker")
 
 var (
 	ErrMissingRequirement error = errors.New("missing requirement")

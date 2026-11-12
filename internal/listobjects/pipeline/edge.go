@@ -8,7 +8,7 @@ import (
 
 	"github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
+	"github.com/openfga/openfga/internal/pipeline/worker"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
