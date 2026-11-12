@@ -34,6 +34,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -315,6 +316,11 @@ func (s *Datastore) Close() {
 		}
 		s.secondaryDB.Close()
 	}
+}
+
+// Querier see [storage.RelationshipTupleReader].Querier.
+func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
+	return nil
 }
 
 // getPgxPool returns the pgxpool.Pool based on consistency options.
@@ -935,11 +941,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	defer span.End()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
-	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
-		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").ToSql()
+	stmt, args, err := findLatestAuthorizationModelQuery(store)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -954,6 +956,18 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	}
 
 	return ret, nil
+}
+
+// findLatestAuthorizationModelQuery reads only the rows of the store's latest model instead of its
+// whole model history. A legacy model can span several rows with the same ID, so this filters on
+// the ID rather than using LIMIT 1.
+func findLatestAuthorizationModelQuery(store string) (string, []interface{}, error) {
+	return sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{"store": store}).
+		Where(sq.Expr("authorization_model_id = (SELECT MAX(authorization_model_id) FROM authorization_model WHERE store = ?)", store)).
+		OrderBy("authorization_model_id desc").ToSql()
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.

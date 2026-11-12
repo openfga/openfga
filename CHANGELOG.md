@@ -7,9 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Added a typed query AST and a `Querier` interface so backends can run queries as structured statements instead of hand-built SQL. This lays the groundwork for future SQL optimizations. [#3316](https://github.com/openfga/openfga/pull/3316)
+  - **Breaking change:** This only applies if you use openfga as a library **and** implement a custom `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL optimizations.
+- Implemented the `Querier` interface for SQLite. [#3322](https://github.com/openfga/openfga/pull/3322)
+
+### Changed
+- Moved the CEL dependency from `github.com/google/cel-go` to its new module path `cel.dev/cel-go` (v0.33.2), as the upstream project has relocated to `github.com/cel-expr/cel-go`. Condition compilation errors no longer end with ` (in container '')`. [#3391](https://github.com/openfga/openfga/pull/3391)
+- Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
+- PostgreSQL: `FindLatestAuthorizationModel` reads only the rows of the store's latest model instead of every model version, so Check and other requests without `authorization_model_id` no longer slow down as the model history grows. [#3377](https://github.com/openfga/openfga/pull/3377)
+
+### Fixed
+- Improved error handling in graph evaluation and iterator processing.
+- Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
+
+## [1.22.1] - 2026-10-27
+### Changed
+- Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)
+
 ### Fixed
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
+- Fixed logging json package to be compatible with golang v1.27. [#3354](https://github.com/openfga/openfga/pull/3354)
 - Fixed the Postgres migration `006_add_collate_index.sql` leaving an invalid `idx_user_lookup` index behind when its `CREATE INDEX CONCURRENTLY` fails, with the retry reporting success because `IF NOT EXISTS` kept that index. A new migration drops the index when it is invalid and rebuilds it, so rerunning `openfga migrate` repairs existing databases. [#3355](https://github.com/openfga/openfga/issues/3355)
 
 ## [1.22.0] - 2026-10-06
@@ -1762,7 +1781,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.22.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.22.1...HEAD
+[1.22.1]: https://github.com/openfga/openfga/compare/v1.22.0...v1.22.1
 [1.22.0]: https://github.com/openfga/openfga/compare/v1.21.0...v1.22.0
 [1.21.0]: https://github.com/openfga/openfga/compare/v1.20.0...v1.21.0
 [1.20.0]: https://github.com/openfga/openfga/compare/v1.19.0...v1.20.0
