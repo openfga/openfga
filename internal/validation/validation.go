@@ -66,6 +66,12 @@ func ValidateContextualTuple(typesys *typesystem.TypeSystem, tk *openfgav1.Tuple
 	if err := ValidateTupleForWrite(typesys, tk); err != nil {
 		return err
 	}
+	return ValidateContextualTupleConditionContextSize(tk)
+}
+
+// ValidateContextualTupleConditionContextSize returns a [tuple.InvalidConditionalTupleError] if the
+// contextual tuple's condition context is larger than the default Write limit (config.DefaultWriteContextByteLimit).
+func ValidateContextualTupleConditionContextSize(tk *openfgav1.TupleKey) error {
 	if err := ValidateConditionContextSize(tk, config.DefaultWriteContextByteLimit); err != nil {
 		return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
 	}

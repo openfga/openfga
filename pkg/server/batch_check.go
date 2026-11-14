@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -282,6 +283,7 @@ func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckE
 	var invalidRelationError *commands.InvalidRelationError
 	var invalidTupleError *commands.InvalidTupleError
 	var invalidContextError *commands.InvalidContextError
+	var invalidConditionalTupleError *tuple.InvalidConditionalTupleError
 	var throttledError *commands.ThrottledError
 
 	err := &openfgav1.CheckError{Message: cmdErr.Error()}
@@ -292,6 +294,8 @@ func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckE
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
 	case errors.As(cmdErr, &invalidTupleError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
+	case errors.As(cmdErr, &invalidConditionalTupleError):
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
 	case errors.Is(cmdErr, graph.ErrResolutionDepthExceeded):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
 	case errors.Is(cmdErr, condition.ErrEvaluationFailed):

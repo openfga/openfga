@@ -702,7 +702,8 @@ func TestContextualTuplesValidation(t *testing.T) {
 			},
 		})
 		require.ErrorContains(t, err, "condition context size limit exceeded")
-		var tupleErr *tuple.InvalidTupleError
+		require.ErrorContains(t, err, "Invalid tuple 'document:2#commenter@user:* (condition xcond)'")
+		var tupleErr *tuple.InvalidConditionalTupleError
 		require.ErrorAs(t, err, &tupleErr)
 	})
 

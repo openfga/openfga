@@ -11,7 +11,6 @@ import (
 
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -131,8 +130,8 @@ func NewRequest(p RequestParams) (*Request, error) {
 		if err := validateCtxTupleInModel(p.Model, t); err != nil {
 			return nil, err
 		}
-		if err := validation.ValidateConditionContextSize(t, config.DefaultWriteContextByteLimit); err != nil {
-			return nil, &tuple.InvalidTupleError{Cause: err, TupleKey: t}
+		if err := validation.ValidateContextualTupleConditionContextSize(t); err != nil {
+			return nil, err
 		}
 	}
 

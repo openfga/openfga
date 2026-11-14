@@ -9,6 +9,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -118,6 +120,11 @@ condition condition1(param1: string) {
 			},
 		})
 		require.ErrorContains(t, err, "condition context size limit exceeded")
+		// Same code and message as Write, ListObjects, ListUsers and Expand.
+		st, ok := status.FromError(CheckCommandErrorToServerError(err))
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), st.Code())
+		require.Contains(t, st.Message(), "Invalid tuple 'doc:1#conditional_viewer@user:1 (condition condition1)'")
 	})
 
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
