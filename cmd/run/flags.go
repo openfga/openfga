@@ -153,7 +153,7 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindEnv("profiler.enabled", "OPENFGA_PROFILER_ENABLED")
 
 		util.MustBindPFlag("profiler.addr", flags.Lookup("profiler-addr"))
-		util.MustBindEnv("profiler.addr", "OPENFGA_PROFILER_ADDRESS")
+		util.MustBindEnv("profiler.addr", "OPENFGA_PROFILER_ADDRESS", "OPENFGA_PROFILER_ADDR")
 
 		util.MustBindPFlag("log.format", flags.Lookup("log-format"))
 		util.MustBindEnv("log.format", "OPENFGA_LOG_FORMAT")
