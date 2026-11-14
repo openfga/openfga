@@ -203,6 +203,11 @@ func validateCheckRequest(
 		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
 			return &InvalidTupleError{Cause: err}
 		}
+		// Not wrapped in InvalidTupleError: an oversized condition context is a validation_error,
+		// the same as on Write and the other APIs that take contextual tuples.
+		if err := validation.ValidateContextualTupleConditionContextSize(ctxTuple); err != nil {
+			return err
+		}
 	}
 	return nil
 }

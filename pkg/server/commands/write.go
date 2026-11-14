@@ -7,7 +7,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -156,12 +155,9 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 				return err
 			}
 
-			contextSize := proto.Size(tk.GetCondition().GetContext())
-			if contextSize > c.conditionContextByteLimit {
-				return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{
-					Cause:    fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", contextSize, c.conditionContextByteLimit),
-					TupleKey: tk,
-				})
+			err = validation.ValidateConditionContextSize(tk, c.conditionContextByteLimit)
+			if err != nil {
+				return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{Cause: err, TupleKey: tk})
 			}
 		}
 	}
