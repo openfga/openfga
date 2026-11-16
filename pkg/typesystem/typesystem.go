@@ -982,19 +982,11 @@ func hasEntrypoints(
 	typedefs map[string]map[string]*openfgav1.Relation,
 	typeName, relationName string,
 	rewrite *openfgav1.Userset,
-	visitedRelations map[string]map[string]bool,
+	visitedRelations map[string]struct{},
 ) (bool, bool, error) {
+	// Keys are the object#relation pairs on the current path, tracked to avoid stack overflows.
 	v := maps.Clone(visitedRelations)
-
-	// Presence of a key represents that we've visited that object and relation. We keep track of this to avoid stack overflows.
-	// The value of the key represents hasEntrypoints for that relation. We set this to true only when the relation is directly assignable.
-	if val, ok := v[typeName]; ok {
-		val[relationName] = false
-	} else {
-		v[typeName] = map[string]bool{
-			relationName: false,
-		}
-	}
+	v[tuple.ToObjectRelationString(typeName, relationName)] = struct{}{}
 
 	relation, ok := typedefs[typeName][relationName]
 	if !ok {
@@ -1006,7 +998,6 @@ func hasEntrypoints(
 		// At least one type must have an entrypoint.
 		for _, assignableType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
-				v[typeName][relationName] = true
 				return true, false, nil
 			}
 
@@ -1018,7 +1009,7 @@ func hasEntrypoints(
 				return false, false, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, assignableRelationName)
 			}
 
-			if _, ok := v[assignableTypeName][assignableRelationName]; ok {
+			if _, ok := v[tuple.ToObjectRelationString(assignableTypeName, assignableRelationName)]; ok {
 				continue
 			}
 
@@ -1041,8 +1032,8 @@ func hasEntrypoints(
 			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
 		}
 
-		if hasEntrypoint, ok := v[typeName][computedRelationName]; ok {
-			return hasEntrypoint, true, nil
+		if _, ok := v[tuple.ToObjectRelationString(typeName, computedRelationName)]; ok {
+			return false, true, nil
 		}
 
 		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
@@ -1065,10 +1056,7 @@ func hasEntrypoints(
 			assignableTypeName := assignableType.GetType()
 
 			if assignableRelation, ok := typedefs[assignableTypeName][computedRelationName]; ok {
-				if hasEntrypoint, ok := v[assignableTypeName][computedRelationName]; ok {
-					if hasEntrypoint {
-						return true, false, nil
-					}
+				if _, ok := v[tuple.ToObjectRelationString(assignableTypeName, computedRelationName)]; ok {
 					continue
 				}
 
@@ -1248,7 +1236,7 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 		return err
 	}
 
-	visitedRelations := map[string]map[string]bool{}
+	visitedRelations := map[string]struct{}{}
 
 	hasEntrypoints, loop, err := hasEntrypoints(t.relations, typeName, relationName, rewrite, visitedRelations)
 	if err != nil {

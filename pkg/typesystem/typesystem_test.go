@@ -903,6 +903,63 @@ func TestHasEntrypoints(t *testing.T) {
 				inputRelation: "d",
 				expectDetails: &relationDetails{true, false},
 			},
+			`computed_relation_to_intersection_of_computed_and_ttu_has_entrypoints`: {
+				model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define parent: [folder]
+						define member: [user]
+						define owner: member
+						define both: owner and owner from parent
+						define alias: both
+			`,
+				inputType:     "folder",
+				inputRelation: "alias",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_to_intersection_of_ttu_and_computed_has_entrypoints`: {
+				model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define parent: [folder]
+						define member: [user]
+						define owner: member
+						define both: owner from parent and owner
+						define alias: both
+			`,
+				inputType:     "folder",
+				inputRelation: "alias",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_to_difference_of_computed_and_ttu_has_entrypoints`: {
+				model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define parent: [folder]
+						define member: [user]
+						define owner: member
+						define both: owner but not owner from parent
+						define alias: both
+			`,
+				inputType:     "folder",
+				inputRelation: "alias",
+				expectDetails: &relationDetails{true, false},
+			},
 		}
 
 		for name, test := range tests {
@@ -913,7 +970,7 @@ func TestHasEntrypoints(t *testing.T) {
 				inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
 
 				rewrite := inputRelation.GetRewrite()
-				hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
+				hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]struct{}{})
 
 				if test.expectError != "" {
 					require.ErrorContains(t, err, test.expectError)
@@ -945,11 +1002,11 @@ func TestHasEntrypoints(t *testing.T) {
 		var internalError serverErrors.InternalError
 
 		t.Run("nil_rewrite", func(t *testing.T) {
-			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", nil, map[string]map[string]bool{})
+			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", nil, map[string]struct{}{})
 			require.ErrorAs(t, err, &internalError)
 		})
 		t.Run("bad_rewrite", func(t *testing.T) {
-			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", &openfgav1.Userset{}, map[string]map[string]bool{})
+			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", &openfgav1.Userset{}, map[string]struct{}{})
 			require.ErrorAs(t, err, &internalError)
 		})
 	})
@@ -1083,7 +1140,7 @@ func TestHasEntrypoints(t *testing.T) {
 				inputRelation, _ := ts.GetRelation("document", "viewer")
 				rewrite := inputRelation.GetRewrite()
 
-				_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "viewer", rewrite, map[string]map[string]bool{})
+				_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "viewer", rewrite, map[string]struct{}{})
 				require.ErrorIs(t, err, ErrInvalidRelation)
 			})
 		}

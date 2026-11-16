@@ -20,6 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
+- Fixed model validation rejecting a relation computed from an intersection or exclusion whose operands share a relation, e.g. `define alias: both` with `define both: owner and owner from parent`.
 
 ## [1.22.1] - 2026-10-27
 ### Changed
