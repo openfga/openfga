@@ -24,6 +24,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Security
 - Fixed known vulnerabilities in the `openfga/openfga` Docker image by updating Go to 1.27.4, `golang.org/x/net` to v0.62.0, and the bundled `grpc_health_probe` to v0.4.62. [#3405](https://github.com/openfga/openfga/pull/3405)
 
+### Added
+- Unary API responses now include a `Fga-Query-Duration-Ms` header with the time, in milliseconds, the server took to resolve the request, for both successful and failed requests. Streaming endpoints such as `StreamedListObjects` do not set it, because their headers are sent before the duration is known. See `pkg/middleware/queryduration`. [#1707](https://github.com/openfga/openfga/issues/1707)
+
 ## [1.22.1] - 2026-10-27
 ### Changed
 - Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)

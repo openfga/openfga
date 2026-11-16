@@ -19,6 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -44,6 +45,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/queryduration"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
@@ -1727,6 +1729,7 @@ func TestHTTPHeaders(t *testing.T) {
 		httpPath      string
 		httpJSONBody  string
 		expectedError bool
+		streaming     bool
 	}{
 		`check`: {
 			httpVerb:     "POST",
@@ -1742,6 +1745,7 @@ func TestHTTPHeaders(t *testing.T) {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
 			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+			streaming:    true,
 		},
 		`listusers`: {
 			httpVerb:     "POST",
@@ -1780,9 +1784,48 @@ func TestHTTPHeaders(t *testing.T) {
 			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
 
+			// Streaming RPCs send their headers before the total duration is known.
+			if test.streaming {
+				require.Empty(t, httpResponse.Header[queryduration.QueryDurationHeader])
+			} else {
+				require.Len(t, httpResponse.Header[queryduration.QueryDurationHeader], 1)
+				durationMs, err := strconv.ParseInt(httpResponse.Header[queryduration.QueryDurationHeader][0], 10, 64)
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, durationMs, int64(0))
+			}
+
 			httpResponse.Body.Close()
 		})
 	}
+
+	t.Run("query_duration_header_exposed_to_cors", func(t *testing.T) {
+		t.Parallel()
+		req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, storeID), strings.NewReader(`{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`))
+		require.NoError(t, err, "Failed to construct request")
+		req.Header.Set("Origin", "http://example.com")
+
+		httpResponse, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer httpResponse.Body.Close()
+
+		require.Equal(t, http.StatusOK, httpResponse.StatusCode)
+		require.Contains(t, httpResponse.Header.Get("Access-Control-Expose-Headers"), queryduration.QueryDurationHeader)
+	})
+
+	t.Run("query_duration_header_on_error", func(t *testing.T) {
+		t.Parallel()
+		req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, "not-a-valid-store-id"), strings.NewReader(`{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`))
+		require.NoError(t, err, "Failed to construct request")
+
+		httpResponse, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer httpResponse.Body.Close()
+
+		require.Equal(t, http.StatusBadRequest, httpResponse.StatusCode)
+		require.Len(t, httpResponse.Header[queryduration.QueryDurationHeader], 1)
+		_, err = strconv.ParseInt(httpResponse.Header[queryduration.QueryDurationHeader][0], 10, 64)
+		require.NoError(t, err)
+	})
 }
 
 func TestServerContext_datastoreConfig(t *testing.T) {
