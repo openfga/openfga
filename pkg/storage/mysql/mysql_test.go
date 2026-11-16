@@ -1468,3 +1468,11 @@ func TestClose_WithSecondaryAndCollector(t *testing.T) {
 	alreadyUnregistered := !prometheus.Unregister(ds.secondaryDBStatsCollector)
 	require.True(t, alreadyUnregistered, "secondary collector should have been unregistered by Close()")
 }
+
+func TestFindLatestAuthorizationModelQueryBoundsOnMaxID(t *testing.T) {
+	query, args, err := findLatestAuthorizationModelQuery("store-1")
+	require.NoError(t, err)
+	require.Contains(t, query, "authorization_model_id = (SELECT MAX(authorization_model_id) FROM authorization_model WHERE store = ?)")
+	require.NotContains(t, query, "LIMIT")
+	require.Equal(t, []interface{}{"store-1", "store-1"}, args)
+}

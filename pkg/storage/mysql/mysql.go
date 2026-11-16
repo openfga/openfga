@@ -596,14 +596,12 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	defer span.End()
 
 	db := s.getSQLDB(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
-	stbl := sq.StatementBuilder.RunWith(db)
 
-	rows, err := stbl.
-		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		QueryContext(ctx)
+	query, args, err := findLatestAuthorizationModelQuery(store)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -614,6 +612,18 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 		return nil, HandleSQLError(err)
 	}
 	return ret, nil
+}
+
+// findLatestAuthorizationModelQuery reads only the rows of the store's latest model
+// instead of its whole model history. A legacy model can span several rows with the
+// same ID, so this filters on the ID rather than using LIMIT 1.
+func findLatestAuthorizationModelQuery(store string) (string, []interface{}, error) {
+	return sq.StatementBuilder.PlaceholderFormat(sq.Question).
+		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{"store": store}).
+		Where(sq.Expr("authorization_model_id = (SELECT MAX(authorization_model_id) FROM authorization_model WHERE store = ?)", store)).
+		OrderBy("authorization_model_id desc").ToSql()
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
