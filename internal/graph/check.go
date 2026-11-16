@@ -171,7 +171,7 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	for _, handler := range handlers {
 		h := handler
 		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			out <- runHandler(ctx, h)
 			return nil
 		})
 	}
@@ -191,9 +191,8 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 
 		case outcome, ok := <-out:
 			if !ok {
-				break
+				return nil, fmt.Errorf("%w: reducer outcome channel closed before all handlers reported", openfgaErrors.ErrUnknown)
 			}
-
 			if outcome.err != nil {
 				finalErr = outcome.err
 				continue // Continue to see if we find an 'Allowed: true'
@@ -237,7 +236,7 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 	for _, handler := range handlers {
 		h := handler // Capture loop variable for the goroutine
 		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			out <- runHandler(ctx, h)
 			return nil
 		})
 	}
@@ -259,9 +258,8 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 
 		case outcome, ok := <-out:
 			if !ok {
-				break
+				return nil, fmt.Errorf("%w: reducer outcome channel closed before all handlers reported", openfgaErrors.ErrUnknown)
 			}
-
 			if outcome.err != nil {
 				// Store the first error we see, but don't exit yet.
 				// A definitive 'false' result from another handler can override this.
@@ -633,6 +631,9 @@ func (c *LocalChecker) profiledCheckHandler(keyPlan planner.Selector, strategy *
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			// penalize plans that timeout from the upstream context
 			if errors.Is(err, context.DeadlineExceeded) {

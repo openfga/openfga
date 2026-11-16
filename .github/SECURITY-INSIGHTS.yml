@@ -3,8 +3,8 @@
 
 header:
   schema-version: 2.0.0
-  last-updated: '2026-01-12'
-  last-reviewed: '2026-01-12'
+  last-updated: '2026-10-30'
+  last-reviewed: '2026-10-30'
   url: https://github.com/openfga/openfga
   project-si-source: https://raw.githubusercontent.com/openfga/.github/main/SECURITY-INSIGHTS.yml
   comment: High-performance and flexible authorization engine built for developers and inspired by Google Zanzibar.
@@ -82,7 +82,7 @@ repository:
     dependency-management-policy: https://github.com/openfga/openfga/blob/main/docs/dependencies-policy.md
     governance: https://github.com/openfga/.github/blob/main/GOVERNANCE.md
     review-policy: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
-    security-policy: https://github.com/openfga/openfga/SECURITY.md
+    security-policy: https://github.com/openfga/openfga/blob/main/SECURITY.md
 
   security:
     assessments:

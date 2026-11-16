@@ -66,6 +66,25 @@ func TestIteratorStream(t *testing.T) {
 			require.True(t, stream.sourceIsClosed)
 			require.Nil(t, stream.buffer)
 		})
+		t.Run("source_closed_when_ctx_cancelled", func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			c := make(chan *Msg)
+			close(c)
+			stream := NewStream(0, c)
+			err := stream.fetchSource(ctx)
+			require.ErrorIs(t, err, context.Canceled)
+			require.False(t, stream.sourceIsClosed)
+		})
+		t.Run("non_nil_buffer_when_ctx_cancelled", func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			stream := &Stream{
+				buffer: storage.NewStaticIterator[string]([]string{"obj:0"}),
+			}
+			err := stream.fetchSource(ctx)
+			require.ErrorIs(t, err, context.Canceled)
+		})
 	})
 
 	t.Run("isDone", func(t *testing.T) {
@@ -195,6 +214,17 @@ func TestIteratorStream(t *testing.T) {
 			require.Error(t, err)
 			require.Nil(t, items)
 		})
+		t.Run("cancelled", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			iter1 := mocks.NewMockIterator[string](ctrl)
+			iter1.EXPECT().Next(gomock.Any()).Times(1).Return("", context.Canceled)
+			dut := Stream{buffer: iter1}
+			items, err := dut.Drain(context.Background())
+			require.ErrorIs(t, err, context.Canceled)
+			require.Nil(t, items)
+		})
 	})
 	t.Run("SkipToTargetObject", func(t *testing.T) {
 		t.Run("bad_target", func(t *testing.T) {
@@ -221,6 +251,15 @@ func TestIteratorStream(t *testing.T) {
 			dut := Stream{buffer: iter1}
 			require.Error(t, dut.SkipToTargetObject(context.Background(), "obj:2"))
 		})
+		t.Run("head_cancelled", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			iter1 := mocks.NewMockIterator[string](ctrl)
+			iter1.EXPECT().Head(gomock.Any()).Times(1).Return("", context.Canceled)
+			dut := Stream{buffer: iter1}
+			require.ErrorIs(t, dut.SkipToTargetObject(context.Background(), "obj:2"), context.Canceled)
+		})
 		t.Run("skip_head_error", func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -231,6 +270,16 @@ func TestIteratorStream(t *testing.T) {
 			iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 			dut := Stream{buffer: iter1}
 			require.Error(t, dut.SkipToTargetObject(context.Background(), "obj:2"))
+		})
+		t.Run("next_cancelled", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			iter1 := mocks.NewMockIterator[string](ctrl)
+			iter1.EXPECT().Head(gomock.Any()).Times(1).Return("obj:0", nil)
+			iter1.EXPECT().Next(gomock.Any()).Times(1).Return("", context.Canceled)
+			dut := Stream{buffer: iter1}
+			require.ErrorIs(t, dut.SkipToTargetObject(context.Background(), "obj:2"), context.Canceled)
 		})
 		t.Run("allItemsAreSmaller", func(t *testing.T) {
 			ctx := context.Background()

@@ -372,4 +372,45 @@ func TestChannelIterator(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("should_propagate_context_cancellation_from_current_iterator", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ch := make(chan *Msg, 2)
+		iter1 := mocks.NewMockIterator[string](ctrl)
+		iter1.EXPECT().Head(gomock.Any()).Return("", context.Canceled)
+		iter1.EXPECT().Next(gomock.Any()).Return("", context.Canceled)
+		iter1.EXPECT().Stop().Times(1)
+
+		ch <- &Msg{Iter: iter1}
+		ch <- &Msg{Iter: storage.NewStaticIterator[string]([]string{"b"})}
+		close(ch)
+
+		iter := FromChannel(ch)
+		defer iter.Stop()
+
+		_, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, context.Canceled)
+
+		_, err = iter.Next(context.Background())
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("should_return_context_cancelled_when_source_closed_on_cancelled_context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		ch := make(chan *Msg)
+		close(ch)
+
+		iter := FromChannel(ch)
+		defer iter.Stop()
+
+		_, err := iter.Head(ctx)
+		require.ErrorIs(t, err, context.Canceled)
+
+		_, err = iter.Next(ctx)
+		require.ErrorIs(t, err, context.Canceled)
+	})
 }

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	celast "github.com/google/cel-go/common/ast"
+	celast "cel.dev/cel-go/common/ast"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
