@@ -691,7 +691,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
-		require.False(t, res.GetAllowed())
+		require.Nil(t, res)
 	})
 
 	t.Run("context_cancelled", func(t *testing.T) {
@@ -1314,7 +1314,7 @@ func TestResolveIntersection(t *testing.T) {
 		res, err := resolver.ResolveIntersection(context.Background(), req, node)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
-		require.False(t, res.GetAllowed())
+		require.Nil(t, res)
 	})
 
 	t.Run("handles_context_cancellation", func(t *testing.T) {
