@@ -63,7 +63,6 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 	rpcDurationMs := strconv.FormatInt(rpcDuration.Milliseconds(), 10)
 
 	r.fields = append(r.fields, zap.String(queryDurationKey, rpcDurationMs))
-	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
 	r.fields = append(r.fields, zap.Int32(grpcCodeKey, code))
@@ -71,20 +70,23 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 	if err != nil {
 		var internalError serverErrors.InternalError
 		if errors.As(err, &internalError) {
+			// ErrorWithContext appends the ctxzap tags itself.
 			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Unwrap().Error()))
-			r.logger.Error(err.Error(), r.fields...)
-		} else {
-			r.fields = append(r.fields, zap.Error(err))
-			r.logger.Info(grpcReqCompleteKey, r.fields...)
+			r.logger.ErrorWithContext(r.ctx, err.Error(), r.fields...)
+			return
 		}
 
+		r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
+		r.fields = append(r.fields, zap.Error(err))
+		r.logger.InfoWithContext(r.ctx, grpcReqCompleteKey, r.fields...)
 		return
 	}
 
+	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 	if r.serviceName == healthCheckService {
-		r.logger.Debug(grpcReqCompleteKey, r.fields...)
+		r.logger.DebugWithContext(r.ctx, grpcReqCompleteKey, r.fields...)
 	} else {
-		r.logger.Info(grpcReqCompleteKey, r.fields...)
+		r.logger.InfoWithContext(r.ctx, grpcReqCompleteKey, r.fields...)
 	}
 }
 

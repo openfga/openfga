@@ -16,6 +16,10 @@ services:
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
       - OPENFGA_DATASTORE_METRICS_ENABLED=true
       - OPENFGA_METRICS_ENABLED=true
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_LOGS_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_LOGS_INSECURE=true
 
   otel-collector:
     image: otel/opentelemetry-collector:latest
@@ -59,13 +63,28 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
 
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: loki
+    command: [ "-config.file=/etc/loki/local-config.yaml" ]
+    volumes:
+      - ./telemetry/loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    networks:
+      - default
+
   grafana:
     image: grafana/grafana
     ports:
-      - 3001:3000 # UI
+      - 127.0.0.1:3001:3000 # UI
     restart: unless-stopped
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     depends_on:
       prometheus:
+        condition: service_started
+      loki:
         condition: service_started
     volumes:
       - ./telemetry/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
@@ -77,3 +96,4 @@ volumes:
   prometheus_data:
   grafana_data:
   jaeger_data:
+  loki_data:
