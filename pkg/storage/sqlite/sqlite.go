@@ -54,6 +54,36 @@ type Datastore struct {
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
 	versionReady           bool
+	handleSQLError         func(error, ...interface{}) error
+	isBusy                 func(error) bool
+}
+
+// DatastoreOption configures a SQLite datastore.
+type DatastoreOption func(*Datastore)
+
+// WithErrorHandler overrides SQL error translation for a caller-supplied driver.
+// The default is [HandleSQLError].
+//
+// The handler must be safe for concurrent use and return a non-nil error,
+// mapping driver errors to storage errors where appropriate.
+//
+// This option does not change readiness errors. Use [WithBusyErrorChecker] to
+// make the busy-retry policy recognise the driver's busy errors.
+func WithErrorHandler(handler func(error, ...interface{}) error) DatastoreOption {
+	return func(s *Datastore) {
+		s.handleSQLError = handler
+	}
+}
+
+// WithBusyErrorChecker overrides how the datastore recognises a busy or locked
+// error that is safe to retry. The default recognises modernc SQLite errors.
+//
+// The checker receives the error returned by the driver, before it is passed to
+// the handler set with [WithErrorHandler]. It must be safe for concurrent use.
+func WithBusyErrorChecker(isBusy func(error) bool) DatastoreOption {
+	return func(s *Datastore) {
+		s.isBusy = isBusy
+	}
 }
 
 // Ensures that SQLite implements the OpenFGADatastore interface.
@@ -116,29 +146,39 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	return NewWithDB(db, cfg)
 }
 
-// NewWithDB creates a new [Datastore] storage with the provided database connection.
-func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
-	var collector prometheus.Collector
+// NewWithDB creates a [Datastore] with the provided database connection.
+// SQL errors are translated by [HandleSQLError] unless [WithErrorHandler] is set.
+// Busy errors are recognised as modernc SQLite errors unless [WithBusyErrorChecker] is set.
+func NewWithDB(db *sql.DB, cfg *sqlcommon.Config, opts ...DatastoreOption) (*Datastore, error) {
+	ds := &Datastore{
+		stbl:                   sq.StatementBuilder.RunWith(db),
+		db:                     db,
+		logger:                 cfg.Logger,
+		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
+		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
+		handleSQLError:         HandleSQLError,
+		isBusy:                 isBusyError,
+	}
+	for _, opt := range opts {
+		opt(ds)
+	}
+	if ds.handleSQLError == nil {
+		return nil, fmt.Errorf("initialize sqlite datastore: error handler must not be nil")
+	}
+	if ds.isBusy == nil {
+		return nil, fmt.Errorf("initialize sqlite datastore: busy error checker must not be nil")
+	}
+
 	if cfg.ExportMetrics {
-		collector = collectors.NewDBStatsCollector(db, "openfga")
+		collector := collectors.NewDBStatsCollector(db, "openfga")
 		if err := prometheus.Register(collector); err != nil {
 			return nil, fmt.Errorf("initialize metrics: %w", err)
 		}
+		ds.dbStatsCollector = collector
 	}
 
-	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(stbl, HandleSQLError, "sqlite")
-
-	return &Datastore{
-		stbl:                   stbl,
-		db:                     db,
-		dbInfo:                 dbInfo,
-		logger:                 cfg.Logger,
-		dbStatsCollector:       collector,
-		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
-		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
-		versionReady:           false,
-	}, nil
+	ds.dbInfo = sqlcommon.NewDBInfo(ds.stbl, ds.handleSQLError, "sqlite")
+	return ds, nil
 }
 
 // Querier see [storage.RelationshipTupleReader].Querier.
@@ -181,6 +221,8 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	return iter.ToArray(ctx, options.Pagination)
 }
 
+// read builds a tuple iterator for the filter, translating SQL errors with the configured handler.
+// A non-nil options value adds pagination.
 func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()
@@ -245,7 +287,7 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	if err != nil {
 		return nil, err
 	}
-	return NewSQLTupleIterator(rg, HandleSQLError), nil
+	return NewSQLTupleIterator(rg, s.handleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -383,7 +425,7 @@ func (s *Datastore) selectExistingRowsForWrite(ctx context.Context, store string
 	if err != nil {
 		return err
 	}
-	iter := NewSQLTupleIterator(rg, HandleSQLError)
+	iter := NewSQLTupleIterator(rg, s.handleSQLError)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
@@ -408,13 +450,13 @@ func (s *Datastore) write(
 ) error {
 	// 1. Begin Transaction ( Isolation Level = READ COMMITTED )
 	var txn *sql.Tx
-	err := busyRetry(func() error {
+	err := s.busyRetry(func() error {
 		var err error
 		txn, err = s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 		return err
 	})
 	if err != nil {
-		return HandleSQLError(err)
+		return s.handleSQLError(err)
 	}
 	defer func() {
 		_ = txn.Rollback()
@@ -595,12 +637,12 @@ func (s *Datastore) write(
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
-			return HandleSQLError(err)
+			return s.handleSQLError(err)
 		}
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
-			return HandleSQLError(err)
+			return s.handleSQLError(err)
 		}
 
 		if rowsAffected != int64(len(deleteConditionsBatch)) {
@@ -642,7 +684,7 @@ func (s *Datastore) write(
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
-			dberr := HandleSQLError(err)
+			dberr := s.handleSQLError(err)
 			if errors.Is(dberr, storage.ErrCollision) {
 				// ErrCollision is returned on duplicate write (constraint violation), meaning we hit a race condition - someone else inserted the same row(s).
 				return storage.ErrWriteConflictOnInsert
@@ -683,15 +725,15 @@ func (s *Datastore) write(
 
 		_, err = changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
-			return HandleSQLError(err)
+			return s.handleSQLError(err)
 		}
 	}
 
-	err = busyRetry(func() error {
+	err = s.busyRetry(func() error {
 		return txn.Commit()
 	})
 	if err != nil {
-		return HandleSQLError(err)
+		return s.handleSQLError(err)
 	}
 
 	return nil
@@ -745,7 +787,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 			&record.InsertedAt,
 		)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, s.handleSQLError(err)
 	}
 
 	if conditionName.String != "" {
@@ -820,7 +862,7 @@ func (s *Datastore) ReadUsersetTuples(
 	if err != nil {
 		return nil, err
 	}
-	return NewSQLTupleIterator(rg, HandleSQLError), nil
+	return NewSQLTupleIterator(rg, s.handleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -872,7 +914,7 @@ func (s *Datastore) ReadStartingWithUser(
 	if err != nil {
 		return nil, err
 	}
-	return NewSQLTupleIterator(rg, HandleSQLError), nil
+	return NewSQLTupleIterator(rg, s.handleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -880,7 +922,9 @@ func (s *Datastore) MaxTuplesPerWrite() int {
 	return s.maxTuplesPerWriteField
 }
 
-func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
+// constructAuthorizationModelFromSQLRows decodes the first row into an authorization model.
+// It returns [storage.ErrNotFound] when there are no rows and translates SQL errors with the configured handler.
+func (s *Datastore) constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
 	if rows.Next() {
 		var modelID string
 		var schemaVersion string
@@ -888,7 +932,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 
 		err := rows.Scan(&modelID, &schemaVersion, &marshalledModel)
 		if err != nil {
-			return nil, HandleSQLError(err)
+			return nil, s.handleSQLError(err)
 		}
 
 		var model openfgav1.AuthorizationModel
@@ -900,7 +944,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, HandleSQLError(err)
+		return nil, s.handleSQLError(err)
 	}
 
 	return nil, storage.ErrNotFound
@@ -920,11 +964,11 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 		}).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, s.handleSQLError(err)
 	}
 	defer rows.Close()
 
-	return constructAuthorizationModelFromSQLRows(rows)
+	return s.constructAuthorizationModelFromSQLRows(rows)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -947,7 +991,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", HandleSQLError(err)
+		return nil, "", s.handleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -961,7 +1005,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	for rows.Next() {
 		err = rows.Scan(&modelID, &schemaVersion, &marshalledModel)
 		if err != nil {
-			return nil, "", HandleSQLError(err)
+			return nil, "", s.handleSQLError(err)
 		}
 
 		if options.Pagination.PageSize > 0 && len(models) >= options.Pagination.PageSize {
@@ -977,7 +1021,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, "", HandleSQLError(err)
+		return nil, "", s.handleSQLError(err)
 	}
 
 	return models, token, nil
@@ -996,11 +1040,11 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 		Limit(1).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, s.handleSQLError(err)
 	}
 	defer rows.Close()
 
-	return constructAuthorizationModelFromSQLRows(rows)
+	return s.constructAuthorizationModelFromSQLRows(rows)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -1025,7 +1069,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return err
 	}
 
-	err = busyRetry(func() error {
+	err = s.busyRetry(func() error {
 		_, err := s.stbl.
 			Insert("authorization_model").
 			Columns("store", "authorization_model_id", "schema_version", "serialized_protobuf").
@@ -1034,7 +1078,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return err
 	})
 	if err != nil {
-		return HandleSQLError(err)
+		return s.handleSQLError(err)
 	}
 
 	return nil
@@ -1048,7 +1092,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	var id, name string
 	var createdAt, updatedAt time.Time
 
-	err := busyRetry(func() error {
+	err := s.busyRetry(func() error {
 		return s.stbl.
 			Insert("store").
 			Columns("id", "name", "created_at", "updated_at").
@@ -1058,7 +1102,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 			Scan(&id, &name, &createdAt, &updatedAt)
 	})
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, s.handleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -1090,7 +1134,7 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, HandleSQLError(err)
+		return nil, s.handleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -1134,7 +1178,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", HandleSQLError(err)
+		return nil, "", s.handleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -1145,7 +1189,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, "", HandleSQLError(err)
+			return nil, "", s.handleSQLError(err)
 		}
 
 		stores = append(stores, &openfgav1.Store{
@@ -1157,7 +1201,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, "", HandleSQLError(err)
+		return nil, "", s.handleSQLError(err)
 	}
 
 	if len(stores) > options.Pagination.PageSize {
@@ -1178,7 +1222,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
-		return HandleSQLError(err)
+		return s.handleSQLError(err)
 	}
 
 	return nil
@@ -1194,7 +1238,7 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 		return err
 	}
 
-	err = busyRetry(func() error {
+	err = s.busyRetry(func() error {
 		_, err := s.stbl.
 			Insert("assertion").
 			Columns("store", "authorization_model_id", "assertions").
@@ -1204,7 +1248,7 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 		return err
 	})
 	if err != nil {
-		return HandleSQLError(err)
+		return s.handleSQLError(err)
 	}
 
 	return nil
@@ -1229,7 +1273,7 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgav1.Assertion{}, nil
 		}
-		return nil, HandleSQLError(err)
+		return nil, s.handleSQLError(err)
 	}
 
 	var assertions openfgav1.Assertions
@@ -1278,7 +1322,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", HandleSQLError(err)
+		return nil, "", s.handleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -1305,7 +1349,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			&insertedAt,
 		)
 		if err != nil {
-			return nil, "", HandleSQLError(err)
+			return nil, "", s.handleSQLError(err)
 		}
 
 		var conditionContextStruct structpb.Struct
@@ -1373,7 +1417,8 @@ func HandleSQLError(err error, args ...interface{}) error {
 
 // SQLite will return an SQLITE_BUSY error when the database is locked rather than waiting for the lock.
 // This function retries the operation up to maxRetries times before returning the error.
-func busyRetry(fn func() error) error {
+// Busy errors are recognised by the datastore's checker, see [WithBusyErrorChecker].
+func (s *Datastore) busyRetry(fn func() error) error {
 	const maxRetries = 10
 	for retries := 0; ; retries++ {
 		err := fn()
@@ -1381,7 +1426,7 @@ func busyRetry(fn func() error) error {
 			return nil
 		}
 
-		if isBusyError(err) {
+		if s.isBusy(err) {
 			if retries < maxRetries {
 				continue
 			}
@@ -1402,6 +1447,7 @@ var busyErrors = map[int]struct{}{
 	sqlite3.SQLITE_LOCKED:             {},
 }
 
+// isBusyError reports whether err is a modernc SQLite busy or locked error.
 func isBusyError(err error) bool {
 	var sqliteErr *sqlite.Error
 	if !errors.As(err, &sqliteErr) {
