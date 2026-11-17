@@ -2,6 +2,7 @@ package tuple
 
 import (
 	"regexp"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,40 @@ func TestTupleKeys_Less(t *testing.T) {
 			require.Equal(t, test.ji, test.value.Less(test.j, test.i))
 		})
 	}
+}
+
+// TestTupleKeys_Less_Equal verifies that Less honors the sort.Interface contract
+// for equal tuples: when two tuples compare equal, Less must return false in both
+// directions (as documented on the method). Returning true for equal elements
+// breaks sort helpers such as sort.IsSorted, which then report a slice containing
+// duplicate tuples as unsorted even when it is correctly ordered.
+func TestTupleKeys_Less_Equal(t *testing.T) {
+	t.Run("plain_equal_tuples_are_not_less_in_either_direction", func(t *testing.T) {
+		tuples := TupleKeys{
+			NewTupleKey("document:A", "relationA", "user:A"),
+			NewTupleKey("document:A", "relationA", "user:A"),
+		}
+		require.False(t, tuples.Less(0, 1))
+		require.False(t, tuples.Less(1, 0))
+	})
+
+	t.Run("equal_condition_tuples_are_not_less_in_either_direction", func(t *testing.T) {
+		tuples := TupleKeys{
+			NewTupleKeyWithCondition("document:A", "relationA", "user:A", "cond", MustNewStruct(map[string]any{"key": "value"})),
+			NewTupleKeyWithCondition("document:A", "relationA", "user:A", "cond", MustNewStruct(map[string]any{"key": "value"})),
+		}
+		require.False(t, tuples.Less(0, 1))
+		require.False(t, tuples.Less(1, 0))
+	})
+
+	t.Run("sorted_slice_with_duplicates_is_reported_sorted", func(t *testing.T) {
+		tuples := TupleKeys{
+			NewTupleKey("document:A", "relationA", "user:A"),
+			NewTupleKey("document:A", "relationA", "user:A"),
+			NewTupleKey("document:B", "relationA", "user:A"),
+		}
+		require.True(t, sort.IsSorted(tuples))
+	})
 }
 
 func TestTuple_Getters(t *testing.T) {
