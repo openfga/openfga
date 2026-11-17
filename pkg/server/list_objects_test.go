@@ -614,3 +614,51 @@ func listObjectsBreakingChangeCases() []listObjectsBreakingChangeCase {
 		},
 	}
 }
+
+func TestListObjects_ContextualTupleLimit(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	testServer := &Server{maxContextualTuples: 2}
+
+	_, err := testServer.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  "01K3RZVNE3NJ4FYKK99QN013G2",
+		Type:     "document",
+		Relation: "viewer",
+		User:     "user:alice",
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:bob"),
+				tuple.NewTupleKey("document:1", "viewer", "user:carol"),
+				tuple.NewTupleKey("document:1", "viewer", "user:dave"),
+			},
+		},
+	})
+
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "exceeds server limit")
+}
+
+func TestStreamedListObjects_ContextualTupleLimit(t *testing.T) {
+	t.Parallel()
+
+	testServer := &Server{maxContextualTuples: 2}
+	srv := &recordingStreamServer{ctx: t.Context()}
+
+	err := testServer.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+		StoreId:  "01K3RZVNE3NJ4FYKK99QN013G2",
+		Type:     "document",
+		Relation: "viewer",
+		User:     "user:alice",
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:bob"),
+				tuple.NewTupleKey("document:1", "viewer", "user:carol"),
+				tuple.NewTupleKey("document:1", "viewer", "user:dave"),
+			},
+		},
+	}, srv)
+
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "exceeds server limit")
+}
