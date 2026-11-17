@@ -1,6 +1,7 @@
 package migrate_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -41,6 +42,28 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 				require.NoError(t, err)
 				version--
 			}
+		})
+	}
+}
+
+func TestMigrateDefaultPingTimeout(t *testing.T) {
+	// Code written before MigrationConfig had PingTimeout leaves it at zero.
+	tests := []struct {
+		name        string
+		pingTimeout time.Duration
+	}{
+		{name: "zero", pingTimeout: 0},
+		{name: "negative", pingTimeout: -time.Second},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := migrate.RunMigrations(migrate.MigrationConfig{
+				Engine:      "sqlite",
+				URI:         "file:" + filepath.Join(t.TempDir(), "openfga.db"),
+				Timeout:     time.Second,
+				PingTimeout: test.pingTimeout,
+			})
+			require.NoError(t, err)
 		})
 	}
 }
