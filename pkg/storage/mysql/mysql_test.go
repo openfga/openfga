@@ -48,6 +48,25 @@ func TestMySQLDatastore(t *testing.T) {
 	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
 
+func TestReadChangesWithHorizonAfterDelayedWrite(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stalled, err := New(uri, sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(1)))
+	require.NoError(t, err)
+	defer stalled.Close()
+
+	conn, err := stalled.primaryDB.Conn(context.Background())
+	require.NoError(t, err)
+
+	waiting := func() bool { return stalled.primaryDB.Stats().WaitCount > 0 }
+	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, waiting, func() { _ = conn.Close() })(t)
+}
+
 func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
