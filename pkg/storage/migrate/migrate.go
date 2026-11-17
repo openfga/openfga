@@ -13,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 )
 
@@ -21,7 +22,7 @@ type MigrationConfig struct {
 	URI           string
 	TargetVersion uint
 	Timeout       time.Duration
-	PingTimeout   time.Duration
+	PingTimeout   time.Duration // Timeout of each ping while waiting for the datastore. Zero or less uses config.DefaultDatastorePingTimeout.
 	Verbose       bool
 	Username      string
 	Password      string
@@ -44,6 +45,12 @@ func RunMigrations(cfg MigrationConfig) error {
 	log := cfg.Logger
 	if log == nil {
 		log = logger.NewNoopLogger()
+	}
+
+	// An unset PingTimeout would give every ping an already expired context, so use the default.
+	pingTimeout := cfg.PingTimeout
+	if pingTimeout <= 0 {
+		pingTimeout = config.DefaultDatastorePingTimeout
 	}
 
 	var driver, migrationsPath string
@@ -118,7 +125,7 @@ func RunMigrations(cfg MigrationConfig) error {
 
 	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.Timeout))
 	err = backoff.Retry(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), cfg.PingTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		defer cancel()
 
 		return db.PingContext(ctx)
