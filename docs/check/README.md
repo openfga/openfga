@@ -577,7 +577,7 @@ Notice that when we first visit the subproblem `group:1#member@user:jon` we add 
 The [graph#CheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L9) interface establishes a contract that all implementations of a Check query resolver must implement. The interface allows for layered dispatch composition as well as remote dispatch semantics (though this is not implemented yet).
 
 ### Delegate Composition (Delegation)
- We have various implementations of the `CheckResolver` interface and they are layered ontop of one another to establish the overall Check resolution behavior. For example, we have the following CheckResolver implementations today:
+ We have various implementations of the `CheckResolver` interface and they are layered on top of one another to establish the overall Check resolution behavior. For example, we have the following CheckResolver implementations today:
 
 * [CachedCheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/cached_resolver.go#L67) - this implementation provides a local cache of subproblems that have already been evaluated in the recent past. We avoid evaluating the same subproblem we've recently seen and we re-use the cached result from the previous evaluation of that subproblem.
 
