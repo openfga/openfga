@@ -381,6 +381,72 @@ func TestParseConfig(t *testing.T) {
 	}
 }
 
+func TestParseConfigCancelRequestDelay(t *testing.T) {
+	t.Run("unset_keeps_the_driver_default", func(t *testing.T) {
+		parsed, err := parseConfig("postgres://abc:passwd@localhost:5346/dbname", false, &sqlcommon.Config{
+			Logger: logger.NewNoopLogger(),
+		})
+		require.NoError(t, err)
+		defaultCfg, err := pgxpool.ParseConfig("postgres://abc:passwd@localhost:5346/dbname")
+		require.NoError(t, err)
+		conn := &pgconn.PgConn{}
+		require.IsType(t, defaultCfg.ConnConfig.BuildContextWatcherHandler(conn), parsed.ConnConfig.BuildContextWatcherHandler(conn))
+	})
+
+	t.Run("set_installs_the_cancel_request_handler", func(t *testing.T) {
+		parsed, err := parseConfig("postgres://abc:passwd@localhost:5346/dbname", false, &sqlcommon.Config{
+			Logger:             logger.NewNoopLogger(),
+			CancelRequestDelay: 25 * time.Millisecond,
+		})
+		require.NoError(t, err)
+		handler, ok := parsed.ConnConfig.BuildContextWatcherHandler(&pgconn.PgConn{}).(*pgconn.CancelRequestContextWatcherHandler)
+		require.True(t, ok)
+		require.Equal(t, 25*time.Millisecond, handler.CancelRequestDelay)
+		require.Equal(t, cancelDeadlineDelay, handler.DeadlineDelay)
+	})
+}
+
+// A query cancelled while the server is still running it: by default pgx closes
+// the connection and the pool dials a new one for the next query; with
+// CancelRequestDelay the query is cancelled server-side and the connection is
+// reused.
+func TestCancelledQueryKeepsConnection(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	uri := testDatastore.GetConnectionURI(true)
+
+	newConnsAfterCancelledQuery := func(t *testing.T, cfg *sqlcommon.Config) (before, after int64) {
+		ds, err := New(uri, cfg)
+		require.NoError(t, err)
+		defer ds.Close()
+		pool := ds.primaryDB
+
+		// One warm connection in the pool.
+		require.NoError(t, pool.Ping(context.Background()))
+		before = pool.Stat().NewConnsCount()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		_, err = pool.Exec(ctx, "SELECT pg_sleep(5)")
+		require.Error(t, err)
+
+		// The next query reuses the connection or replaces it.
+		require.NoError(t, pool.Ping(context.Background()))
+		return before, pool.Stat().NewConnsCount()
+	}
+
+	t.Run("default_closes_the_connection", func(t *testing.T) {
+		before, after := newConnsAfterCancelledQuery(t, sqlcommon.NewConfig())
+		require.Equal(t, before+1, after)
+	})
+
+	t.Run("cancel_request_delay_keeps_the_connection", func(t *testing.T) {
+		before, after := newConnsAfterCancelledQuery(t, sqlcommon.NewConfig(
+			sqlcommon.WithCancelRequestDelay(10*time.Millisecond),
+		))
+		require.Equal(t, before, after)
+	})
+}
+
 func TestBeforeConnectHook(t *testing.T) {
 	noOpLogger := logger.NewNoopLogger()
 	t.Run("sets the password from the file", func(t *testing.T) {
