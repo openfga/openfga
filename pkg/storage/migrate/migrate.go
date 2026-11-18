@@ -47,18 +47,7 @@ func RunMigrations(cfg MigrationConfig) error {
 		log = logger.NewNoopLogger()
 	}
 
-	// An unset PingTimeout would give every ping an already expired context, so use the default.
-	pingTimeout := cfg.PingTimeout
-	if pingTimeout <= 0 {
-		pingTimeout = config.DefaultDatastorePingTimeout
-	}
-
-	// A zero MaxElapsedTime makes the backoff retry forever, so an unset Timeout uses the same
-	// default as the migrate command and sqlcommon.NewConfig.
-	timeout := cfg.Timeout
-	if timeout == 0 {
-		timeout = config.DefaultDatastorePingRetryMaxElapsedTime
-	}
+	pingTimeout, timeout := pingTimeouts(cfg)
 
 	var driver, migrationsPath string
 	var uri string
@@ -178,4 +167,22 @@ func RunMigrations(cfg MigrationConfig) error {
 
 	log.Info("migration done")
 	return nil
+}
+
+// pingTimeouts returns the timeout of each ping and how long to keep retrying it, with unset values replaced by the defaults.
+func pingTimeouts(cfg MigrationConfig) (time.Duration, time.Duration) {
+	// An unset PingTimeout would give every ping an already expired context, so use the default.
+	pingTimeout := cfg.PingTimeout
+	if pingTimeout <= 0 {
+		pingTimeout = config.DefaultDatastorePingTimeout
+	}
+
+	// A zero MaxElapsedTime makes the backoff retry forever, so an unset Timeout uses the same
+	// default as the migrate command and sqlcommon.NewConfig.
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = config.DefaultDatastorePingRetryMaxElapsedTime
+	}
+
+	return pingTimeout, timeout
 }
