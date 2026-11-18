@@ -21,7 +21,7 @@ type MigrationConfig struct {
 	Engine        string
 	URI           string
 	TargetVersion uint
-	Timeout       time.Duration
+	Timeout       time.Duration // How long to keep retrying the ping before giving up. Zero uses config.DefaultDatastorePingRetryMaxElapsedTime.
 	PingTimeout   time.Duration // Timeout of each ping while waiting for the datastore. Zero or less uses config.DefaultDatastorePingTimeout.
 	Verbose       bool
 	Username      string
@@ -51,6 +51,13 @@ func RunMigrations(cfg MigrationConfig) error {
 	pingTimeout := cfg.PingTimeout
 	if pingTimeout <= 0 {
 		pingTimeout = config.DefaultDatastorePingTimeout
+	}
+
+	// A zero MaxElapsedTime makes the backoff retry forever, so an unset Timeout uses the same
+	// default as the migrate command and sqlcommon.NewConfig.
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = config.DefaultDatastorePingRetryMaxElapsedTime
 	}
 
 	var driver, migrationsPath string
@@ -123,7 +130,7 @@ func RunMigrations(cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.Timeout))
+	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(timeout))
 	err = backoff.Retry(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		defer cancel()

@@ -20,7 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
-- Fixed `migrate.RunMigrations` failing with `context deadline exceeded`, or retrying without a limit when `Timeout` is also unset, for callers that do not set `MigrationConfig.PingTimeout`. An unset `PingTimeout` now uses the default datastore ping timeout. [#3425](https://github.com/openfga/openfga/issues/3425)
+- Fixed `migrate.RunMigrations` failing with `context deadline exceeded` when `MigrationConfig.PingTimeout` is not set, or retrying without a limit when `Timeout` is not set either. An unset `PingTimeout` now uses the default datastore ping timeout, and an unset `Timeout` the default ping retry time, as the `migrate` command does. [#3425](https://github.com/openfga/openfga/issues/3425)
 
 ### Security
 - Fixed known vulnerabilities in the `openfga/openfga` Docker image by updating Go to 1.27.4, `golang.org/x/net` to v0.62.0, and the bundled `grpc_health_probe` to v0.4.62. [#3405](https://github.com/openfga/openfga/pull/3405)

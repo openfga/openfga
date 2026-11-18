@@ -67,3 +67,23 @@ func TestMigrateDefaultPingTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestMigrateTimeoutAndPingTimeoutUnset(t *testing.T) {
+	// With neither field set, every ping used to fail and the retry loop had no limit, so the
+	// call never returned. Run it in a goroutine so a regression fails the test instead of
+	// hanging the suite.
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- migrate.RunMigrations(migrate.MigrationConfig{
+			Engine: "sqlite",
+			URI:    "file:" + filepath.Join(t.TempDir(), "openfga.db"),
+		})
+	}()
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("RunMigrations did not return within 30s with Timeout and PingTimeout unset")
+	}
+}
