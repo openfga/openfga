@@ -21,13 +21,13 @@ import (
 
 // recordingQuerier is an adapter.Querier that records the context passed to Execute.
 type recordingQuerier struct {
-	fakeQuerier
+	adapter.Querier
 	ctx context.Context
 }
 
 func (q *recordingQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
 	q.ctx = ctx
-	return q.fakeQuerier.Execute(ctx, stmt)
+	return q.Querier.Execute(ctx, stmt)
 }
 
 func TestContextTracerWrapperQuerier(t *testing.T) {
@@ -56,7 +56,7 @@ func TestContextTracerWrapperQuerier(t *testing.T) {
 
 func TestContextQuerierExecute(t *testing.T) {
 	t.Run("no request deadline means no query deadline", func(t *testing.T) {
-		inner := &recordingQuerier{fakeQuerier: fakeQuerier{rows: &fakeRows{remaining: 1}}}
+		inner := &recordingQuerier{Querier: &fakeQuerier{rows: &fakeRows{remaining: 1}}}
 		q := &contextQuerier{Querier: inner}
 
 		rows, err := q.Execute(context.Background(), nil)
@@ -70,7 +70,7 @@ func TestContextQuerierExecute(t *testing.T) {
 	})
 
 	t.Run("request deadline is honored", func(t *testing.T) {
-		inner := &recordingQuerier{fakeQuerier: fakeQuerier{rows: &fakeRows{}}}
+		inner := &recordingQuerier{Querier: &fakeQuerier{rows: &fakeRows{}}}
 		q := &contextQuerier{Querier: inner}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -103,7 +103,7 @@ func TestContextQuerierExecute(t *testing.T) {
 			},
 		} {
 			t.Run(name, func(t *testing.T) {
-				inner := &recordingQuerier{fakeQuerier: fakeQuerier{rows: &fakeRows{remaining: 1}}}
+				inner := &recordingQuerier{Querier: &fakeQuerier{rows: &fakeRows{remaining: 1}}}
 				q := &contextQuerier{Querier: inner}
 
 				ctx, cancel := newCtx()
@@ -120,7 +120,7 @@ func TestContextQuerierExecute(t *testing.T) {
 
 	t.Run("request values are preserved", func(t *testing.T) {
 		type ctxKey struct{}
-		inner := &recordingQuerier{fakeQuerier: fakeQuerier{rows: &fakeRows{}}}
+		inner := &recordingQuerier{Querier: &fakeQuerier{rows: &fakeRows{}}}
 		q := &contextQuerier{Querier: inner}
 
 		rows, err := q.Execute(context.WithValue(context.Background(), ctxKey{}, "v"), nil)
@@ -133,7 +133,7 @@ func TestContextQuerierExecute(t *testing.T) {
 	t.Run("query context is released", func(t *testing.T) {
 		t.Run("on Execute error", func(t *testing.T) {
 			wantErr := errors.New("boom")
-			inner := &recordingQuerier{fakeQuerier: fakeQuerier{err: wantErr}}
+			inner := &recordingQuerier{Querier: &fakeQuerier{err: wantErr}}
 			q := &contextQuerier{Querier: inner}
 
 			rows, err := q.Execute(context.Background(), nil)
@@ -143,7 +143,7 @@ func TestContextQuerierExecute(t *testing.T) {
 		})
 
 		t.Run("when rows are exhausted", func(t *testing.T) {
-			inner := &recordingQuerier{fakeQuerier: fakeQuerier{rows: &fakeRows{remaining: 1}}}
+			inner := &recordingQuerier{Querier: &fakeQuerier{rows: &fakeRows{remaining: 1}}}
 			q := &contextQuerier{Querier: inner}
 
 			rows, err := q.Execute(context.Background(), nil)
@@ -158,7 +158,7 @@ func TestContextQuerierExecute(t *testing.T) {
 
 		t.Run("when rows are closed early", func(t *testing.T) {
 			innerRows := &fakeRows{remaining: 2}
-			inner := &recordingQuerier{fakeQuerier: fakeQuerier{rows: innerRows}}
+			inner := &recordingQuerier{Querier: &fakeQuerier{rows: innerRows}}
 			q := &contextQuerier{Querier: inner}
 
 			rows, err := q.Execute(context.Background(), nil)
@@ -198,18 +198,19 @@ func TestContextQuerierSQLite(t *testing.T) {
 
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).OrderBy(query.Asc(a.ObjectID()))
-	q := &contextQuerier{Querier: sqlite.New(db)}
+	inner := &recordingQuerier{Querier: sqlite.New(db)}
+	q := &contextQuerier{Querier: inner}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	rows, err := q.Execute(ctx, stmt)
 	require.NoError(t, err)
 	defer rows.Close()
 
-	// Cancelling the request mid-iteration must not abort the rows.
+	// Cancelling the request mid-iteration must not reach the context database/sql
+	// watches, otherwise it would asynchronously close the rows.
 	require.True(t, rows.Next())
 	cancel()
-	// database/sql closes rows on cancellation asynchronously; give it a chance to.
-	time.Sleep(50 * time.Millisecond)
+	require.NoError(t, inner.ctx.Err())
 
 	got := []string{}
 	for ok := true; ok; ok = rows.Next() {
