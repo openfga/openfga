@@ -105,6 +105,14 @@ def free_port():
 
 async def run(args):
     """Measure churn and decision parity using an isolated local PostgreSQL instance."""
+    # Environment overrides do not disable OpenFGA's configuration-file search.
+    config_dirs = (Path("/etc/openfga"), Path(os.environ.get("HOME", "") + "/.openfga"), Path.cwd())
+    for directory in config_dirs:
+        if not directory.exists():
+            continue
+        for config in directory.iterdir():
+            if (config.name == "config" or config.name.startswith("config.")) and config.is_file():
+                raise SystemExit(f"Refusing ambient OpenFGA configuration: {config}")
     binary = str(Path(args.binary).resolve(strict=True))
     with open(binary, "rb") as executable:
         digest = hashlib.file_digest(executable, "sha256").hexdigest()
