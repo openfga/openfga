@@ -1,5 +1,3 @@
-FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.62@sha256:1a900fcfc1b8e680511670908b47d9bc3f8464f88d9159f961c5d55c254b8140 AS grpc_health_probe
-# Please manually update the Dockerfile.goreleaser whenever the grpc health probe is updated
 FROM cgr.dev/chainguard/go:1.27.4@sha256:6bcd39e3c9c79778784d9210b24a2f5f257e4f7817a4e9b9983d19aedae772d8 AS builder
 
 WORKDIR /app
@@ -22,11 +20,9 @@ EXPOSE 8081
 EXPOSE 8080
 EXPOSE 3000
 
-COPY --from=grpc_health_probe /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 COPY --from=builder /bin/openfga /openfga
 
-# Healthcheck configuration for the container using grpc_health_probe
-# The container will be considered healthy if the gRPC health probe returns a successful response.
-HEALTHCHECK --interval=5s --timeout=30s --retries=3 CMD ["/usr/local/bin/grpc_health_probe", "-addr=:8081"]
+# The container is healthy when the gRPC health check of the server returns SERVING.
+HEALTHCHECK --interval=5s --timeout=30s --retries=3 CMD ["/openfga", "healthcheck"]
 
 ENTRYPOINT ["/openfga"]
