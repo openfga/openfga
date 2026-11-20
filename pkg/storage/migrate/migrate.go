@@ -13,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 )
 
@@ -20,8 +21,8 @@ type MigrationConfig struct {
 	Engine        string
 	URI           string
 	TargetVersion uint
-	Timeout       time.Duration
-	PingTimeout   time.Duration
+	Timeout       time.Duration // How long to keep retrying the ping before giving up. Zero uses config.DefaultDatastorePingRetryMaxElapsedTime.
+	PingTimeout   time.Duration // Timeout of each ping while waiting for the datastore. Zero or less uses config.DefaultDatastorePingTimeout.
 	Verbose       bool
 	Username      string
 	Password      string
@@ -45,6 +46,8 @@ func RunMigrations(cfg MigrationConfig) error {
 	if log == nil {
 		log = logger.NewNoopLogger()
 	}
+
+	pingTimeout, timeout := pingTimeouts(cfg)
 
 	var driver, migrationsPath string
 	var uri string
@@ -116,9 +119,9 @@ func RunMigrations(cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.Timeout))
+	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(timeout))
 	err = backoff.Retry(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), cfg.PingTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		defer cancel()
 
 		return db.PingContext(ctx)
@@ -164,4 +167,22 @@ func RunMigrations(cfg MigrationConfig) error {
 
 	log.Info("migration done")
 	return nil
+}
+
+// pingTimeouts returns the timeout of each ping and how long to keep retrying it, with unset values replaced by the defaults.
+func pingTimeouts(cfg MigrationConfig) (time.Duration, time.Duration) {
+	// An unset PingTimeout would give every ping an already expired context, so use the default.
+	pingTimeout := cfg.PingTimeout
+	if pingTimeout <= 0 {
+		pingTimeout = config.DefaultDatastorePingTimeout
+	}
+
+	// A zero MaxElapsedTime makes the backoff retry forever, so an unset Timeout uses the same
+	// default as the migrate command and sqlcommon.NewConfig.
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = config.DefaultDatastorePingRetryMaxElapsedTime
+	}
+
+	return pingTimeout, timeout
 }
