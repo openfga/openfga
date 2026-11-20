@@ -83,7 +83,7 @@ func (tk TupleKeys) Less(i, j int) bool {
 	}
 	// Note: conditions also optionally have context structs, but we aren't sorting by context
 
-	return true
+	return false
 }
 
 // Swap is a method that is required to implement the

@@ -22,6 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
+- Fixed `tuple.TupleKeys.Less` returning `true` for equal tuples, which violated the `sort.Interface` strict-weak-ordering contract (for example, `sort.IsSorted` reported a sorted slice with duplicate tuples as unsorted). [#3424](https://github.com/openfga/openfga/pull/3424)
 
 ### Security
 - Fixed known vulnerabilities in the `openfga/openfga` Docker image by updating Go to 1.27.4, `golang.org/x/net` to v0.62.0, and the bundled `grpc_health_probe` to v0.4.62. [#3405](https://github.com/openfga/openfga/pull/3405)
