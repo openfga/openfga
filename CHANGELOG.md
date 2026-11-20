@@ -20,6 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - PostgreSQL: `FindLatestAuthorizationModel` reads only the rows of the store's latest model instead of every model version, so Check and other requests without `authorization_model_id` no longer slow down as the model history grows. [#3377](https://github.com/openfga/openfga/pull/3377)
 
 ### Fixed
+- Fixed ListObjects with `enable-list-objects-optimizations` returning objects for a typed wildcard user (e.g. `user:*`) that only a specific user is related to through a contextual tuple. `CombinedTupleReader.ReadStartingWithUser` now matches no contextual tuples for an empty user filter, as the datastores already do. See `pkg/storage/storagewrappers/combinedtuplereader.go`.
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
 

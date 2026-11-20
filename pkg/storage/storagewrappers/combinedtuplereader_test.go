@@ -501,6 +501,33 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
 		},
+		{
+			name: "Test_combinedTupleReader_ReadStartingWithUser_OK_empty_user_filter",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["group:1#member@user:11"].GetKey(),
+					testTuples["group:2#member@user:21"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{},
+				},
+				options: storage.ReadStartingWithUserOptions{},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
 
 		{
 			name: "Test_combinedTupleReader_ReadStartingWithUser_error_relationship_tuple_reader_error",

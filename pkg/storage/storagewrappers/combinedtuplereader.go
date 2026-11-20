@@ -168,6 +168,12 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
+	// An empty UserFilter matches no tuples in the datastores, but filterTuples takes an
+	// empty user list to mean any user and would return every contextual tuple.
+	if len(filter.UserFilter) == 0 {
+		return c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+	}
+
 	var userFilters []string
 	for _, u := range filter.UserFilter {
 		uf := u.GetObject()

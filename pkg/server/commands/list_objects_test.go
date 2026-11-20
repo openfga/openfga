@@ -578,6 +578,50 @@ func TestListObjectsPipelineConditionError(t *testing.T) {
 	require.ErrorContains(t, err, "is missing context parameters '[x]'")
 }
 
+func TestListObjectsWildcardIgnoresContextualTuplesOfOtherUsers(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user, user:*]`, nil)
+
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
+	t.Cleanup(checkResolverCloser)
+
+	for _, optimizationsEnabled := range []bool{false, true} {
+		t.Run("optimizations_"+strconv.FormatBool(optimizationsEnabled), func(t *testing.T) {
+			q, err := NewListObjectsQuery(ds, checkResolver, storeID,
+				WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(optimizationsEnabled)))
+			require.NoError(t, err)
+
+			res, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:*",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+					},
+				},
+			})
+			require.NoError(t, err)
+			require.Empty(t, res.Objects)
+		})
+	}
+}
+
 func reportLatencies(b *testing.B, latencies []time.Duration) {
 	// Sort latencies ascending
 	sort.Slice(latencies, func(i, j int) bool {
