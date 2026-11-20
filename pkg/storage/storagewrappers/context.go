@@ -6,6 +6,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
+	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
 // ContextTracerWrapper is a wrapper for a datastore that introduces a new context to the underlying datastore methods.
@@ -33,6 +35,53 @@ func queryContext(ctx context.Context) context.Context {
 // Close ensures proper cleanup and closure of resources associated with the OpenFGADatastore.
 func (c *ContextTracerWrapper) Close() {
 	c.OpenFGADatastore.Close()
+}
+
+// Querier see [storage.RelationshipTupleReader].Querier. Statements ignore the request's cancellation.
+func (c *ContextTracerWrapper) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	inner := c.OpenFGADatastore.Querier(consistency)
+	if inner == nil {
+		return nil
+	}
+	return &contextQuerier{Querier: inner}
+}
+
+type contextQuerier struct {
+	adapter.Querier
+}
+
+// Execute holds the derived context's cancel until the rows are exhausted or closed.
+func (q *contextQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
+	queryCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	deadline, ok := ctx.Deadline()
+	if ok {
+		queryCtx, cancel = context.WithDeadline(queryCtx, deadline)
+	}
+
+	rows, err := q.Querier.Execute(queryCtx, stmt)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return &contextRows{Rows: rows, cancel: cancel}, nil
+}
+
+type contextRows struct {
+	adapter.Rows
+	cancel context.CancelFunc
+}
+
+func (r *contextRows) Next() bool {
+	ok := r.Rows.Next()
+	if !ok {
+		r.cancel()
+	}
+	return ok
+}
+
+func (r *contextRows) Close() error {
+	defer r.cancel()
+	return r.Rows.Close()
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].

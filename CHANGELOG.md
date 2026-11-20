@@ -18,6 +18,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Moved the CEL dependency from `github.com/google/cel-go` to its new module path `cel.dev/cel-go` (v0.33.2), as the upstream project has relocated to `github.com/cel-expr/cel-go`. Condition compilation errors no longer end with ` (in container '')`. [#3391](https://github.com/openfga/openfga/pull/3391)
 - Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
 - PostgreSQL: `FindLatestAuthorizationModel` reads only the rows of the store's latest model instead of every model version, so Check and other requests without `authorization_model_id` no longer slow down as the model history grows. [#3377](https://github.com/openfga/openfga/pull/3377)
+- `Querier` statements now ignore request cancellation, so a cancelled request doesn't abort an in-flight query and churn database connections. The request's deadline still applies. This applies unless `--context-propagation-to-datastore` is enabled. [#3401](https://github.com/openfga/openfga/pull/3401)
+  - This change only affects the new `Querier` path, which is currently unused.
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
