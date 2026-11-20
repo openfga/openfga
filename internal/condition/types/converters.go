@@ -68,11 +68,12 @@ func numericTypeConverterFunc[T int64 | uint64 | float64](value any) (any, error
 		return numericValue, nil
 
 	case float64:
-		numericValue, a := bigFloat.Float64()
-		if a == big.Above || a == big.Below {
-			return nil, fmt.Errorf("number cannot be represented as a float64: %s", bigFloat.String())
-		}
-		if math.IsInf(numericValue, 0) {
+		// Float64 rounds to the nearest float64, so the accuracy it reports is
+		// Above or Below for most decimals (e.g. "0.1"). Only reject values that
+		// cannot be represented at all: overflow to infinity, or a non-zero
+		// value that underflows to zero.
+		numericValue, _ := bigFloat.Float64()
+		if math.IsInf(numericValue, 0) || (numericValue == 0 && bigFloat.Sign() != 0) {
 			return nil, fmt.Errorf("number cannot be represented as a float64: %s", bigFloat.String())
 		}
 		return numericValue, nil
