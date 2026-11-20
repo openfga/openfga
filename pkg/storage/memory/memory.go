@@ -665,6 +665,9 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 
 	models := make([]*openfgav1.AuthorizationModel, 0, len(s.authorizationModels[store]))
 	for _, entry := range s.authorizationModels[store] {
+		if options.Pagination.From != "" && entry.model.GetId() > options.Pagination.From {
+			continue
+		}
 		models = append(models, entry.model)
 	}
 
@@ -673,28 +676,19 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 		return models[i].GetId() > models[j].GetId()
 	})
 
-	var from int
 	continuationToken := ""
-	var err error
 
 	pageSize := storage.DefaultPageSize
 	if options.Pagination.PageSize > 0 {
 		pageSize = options.Pagination.PageSize
 	}
 
-	if options.Pagination.From != "" {
-		from, err = strconv.Atoi(options.Pagination.From)
-		if err != nil {
-			return nil, "", err
-		}
-	}
-
-	from = max(0, min(from, len(models)))
-	to := min(len(models), from+pageSize)
-	res := models[from:to]
+	to := min(len(models), pageSize)
+	res := models[:to]
 
 	if to != len(models) {
-		continuationToken = strconv.Itoa(to)
+		// Resume at the first model not returned, even if newer models are written.
+		continuationToken = models[to].GetId()
 	}
 
 	return res, continuationToken, nil

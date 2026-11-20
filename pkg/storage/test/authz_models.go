@@ -109,6 +109,35 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	})
 
 	t.Run("pagination_works", func(t *testing.T) {
+		t.Run("new_model_between_pages", func(t *testing.T) {
+			store := ulid.Make().String()
+			models := make([]*openfgav1.AuthorizationModel, 3)
+			for i := range models {
+				models[i] = &openfgav1.AuthorizationModel{
+					Id: ulid.Make().String(), SchemaVersion: "1.1",
+					TypeDefinitions: []*openfgav1.TypeDefinition{{Type: "user"}},
+				}
+			}
+			for _, model := range models[:2] {
+				require.NoError(t, datastore.WriteAuthorizationModel(ctx, store, model))
+			}
+
+			opts := storage.ReadAuthorizationModelsOptions{Pagination: storage.NewPaginationOptions(1, "")}
+			page, token, err := datastore.ReadAuthorizationModels(ctx, store, opts)
+			require.NoError(t, err)
+			require.Len(t, page, 1)
+			require.Equal(t, models[1].GetId(), page[0].GetId())
+			require.NotEmpty(t, token)
+
+			require.NoError(t, datastore.WriteAuthorizationModel(ctx, store, models[2]))
+			opts.Pagination.From = token
+			page, token, err = datastore.ReadAuthorizationModels(ctx, store, opts)
+			require.NoError(t, err)
+			require.Len(t, page, 1)
+			require.Equal(t, models[0].GetId(), page[0].GetId())
+			require.Empty(t, token)
+		})
+
 		t.Run("read_page_size_1_returns_everything", func(t *testing.T) {
 			seenModels := readModelsWithPageSize(t, datastore, store, 1)
 			if diff := cmp.Diff(modelsWritten, seenModels, cmpSortTupleKeys...); diff != "" {
