@@ -101,6 +101,7 @@ const (
 	DefaultPlannerEvictionThreshold = 0
 
 	DefaultTraceSampler           = "traceidratio"
+	DefaultTraceExporter          = "otlp"
 	DefaultPlannerCleanupInterval = 0
 
 	DefaultDatastorePingTimeout             = 2 * time.Second
@@ -259,6 +260,10 @@ type TraceConfig struct {
 }
 
 type OTLPTraceConfig struct {
+	// Exporter selects where spans go: 'otlp' sends them to Endpoint, 'noop'
+	// keeps tracing on (so trace IDs propagate and show up in logs) without
+	// sending spans anywhere.
+	Exporter string
 	Endpoint string
 	TLS      OTLPTraceTLSConfig
 }
@@ -610,6 +615,12 @@ func (cfg *Config) VerifyBinarySettings() error {
 		if !supportedSamplers[strings.ToLower(cfg.Trace.Sampler)] {
 			fmt.Printf("WARNING: unrecognized trace sampler '%s', falling back to 'traceidratio'. Supported values: always_on, always_off, traceidratio, parentbased_always_on, parentbased_always_off, parentbased_traceidratio\n", cfg.Trace.Sampler)
 		}
+
+		switch strings.ToLower(cfg.Trace.OTLP.Exporter) {
+		case "otlp", "noop":
+		default:
+			return fmt.Errorf("config 'trace.otlp.exporter' must be one of ['otlp', 'noop'], got '%s'", cfg.Trace.OTLP.Exporter)
+		}
 	}
 
 	if cfg.Playground.Enabled {
@@ -918,6 +929,7 @@ func DefaultConfig() *Config {
 		Trace: TraceConfig{
 			Enabled: false,
 			OTLP: OTLPTraceConfig{
+				Exporter: DefaultTraceExporter,
 				Endpoint: "0.0.0.0:4317",
 				TLS: OTLPTraceTLSConfig{
 					Enabled: false,

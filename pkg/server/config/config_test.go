@@ -1280,6 +1280,32 @@ func TestVerifyBinarySettings_TraceSampler(t *testing.T) {
 	})
 }
 
+func TestVerifyBinarySettings_TraceExporter(t *testing.T) {
+	for _, exporter := range []string{"otlp", "noop", "NOOP"} {
+		t.Run("valid_"+exporter, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Trace.Enabled = true
+			cfg.Trace.OTLP.Exporter = exporter
+			require.NoError(t, cfg.VerifyBinarySettings())
+		})
+	}
+
+	t.Run("unknown_exporter_errors", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = true
+		cfg.Trace.OTLP.Exporter = "zipkin"
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "config 'trace.otlp.exporter' must be one of ['otlp', 'noop'], got 'zipkin'")
+	})
+
+	t.Run("tracing_disabled_skips_exporter_validation", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = false
+		cfg.Trace.OTLP.Exporter = "zipkin"
+		require.NoError(t, cfg.VerifyBinarySettings())
+	})
+}
+
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise

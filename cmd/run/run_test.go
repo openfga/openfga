@@ -348,6 +348,52 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	require.Equal(t, 1, otlpServer.GetExportCount())
 }
 
+func TestBuildServiceWithTracingNoopExporter(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	// a collector is running, but with the noop exporter nothing should reach it
+	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
+	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
+	otlpServerPortReleaser()
+	otlpServer := mocks.NewMockTracingServer(t, otlpServerPort)
+
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Trace.Enabled = true
+	cfg.Trace.SampleRatio = 1
+	cfg.Trace.OTLP.Exporter = "noop"
+	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
+	cfg.Trace.OTLP.TLS.Enabled = false
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	serverDone := make(chan error)
+	go func() {
+		serverDone <- runServer(ctx, cfg)
+	}()
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+
+	client := retryablehttp.NewClient()
+	t.Cleanup(client.HTTPClient.CloseIdleConnections)
+	response, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
+
+	cancel()
+	select {
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "timed out")
+	case err := <-serverDone:
+		require.NoError(t, err)
+	}
+
+	require.Equal(t, 0, otlpServer.GetExportCount())
+}
+
 func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retryClient *retryablehttp.Client, validToken string) {
 	// create a store
 	createStorePayload := strings.NewReader(`{"name": "some-store-name"}`)
@@ -1349,6 +1395,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.trace.properties.resourceAttributes.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ResourceAttributes)
+
+	val = res.Get("properties.trace.properties.otlp.properties.exporter.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.OTLP.Exporter)
 
 	val = res.Get("properties.trace.properties.otlp.properties.endpoint.default")
 	require.True(t, val.Exists())
