@@ -103,6 +103,11 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.HandleTupleValidateError(&tupleError)
 	}
 
+	var errInvalidConditionalTuple *tuple.InvalidConditionalTupleError
+	if errors.As(err, &errInvalidConditionalTuple) {
+		return serverErrors.HandleTupleValidateError(errInvalidConditionalTuple)
+	}
+
 	var errInvalidTuple *tuple.InvalidTupleError
 	if errors.As(err, &errInvalidTuple) {
 		return serverErrors.HandleTupleValidateError(errInvalidTuple)

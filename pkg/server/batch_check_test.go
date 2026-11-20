@@ -254,6 +254,16 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 				Message: "invalid tuple: " + errMsg,
 			},
 		},
+		`test_invalid_conditional_tuple_error`: {
+			inputError: &tuple.InvalidConditionalTupleError{
+				Cause:    errors.New(errMsg),
+				TupleKey: tuple.NewTupleKeyWithCondition("doc:1", "viewer", "user:1", "cond", nil),
+			},
+			expectedOutput: &openfgav1.CheckError{
+				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
+				Message: "Invalid tuple 'doc:1#viewer@user:1 (condition cond)'. Reason: " + errMsg,
+			},
+		},
 		`test_resolution_depth_error`: {
 			inputError: graph.ErrResolutionDepthExceeded,
 			expectedOutput: &openfgav1.CheckError{

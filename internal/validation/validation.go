@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -51,6 +53,37 @@ func ValidateTupleForWrite(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKe
 		if _, err := condition.FromInlineExpression(tk); err != nil {
 			return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
 		}
+	}
+	return nil
+}
+
+// ValidateContextualTuple returns nil if a contextual tuple is valid according to the provided model.
+// Contextual tuples mimic tuples written to the datastore, so they get the same checks as a Write:
+// [ValidateTupleForWrite] plus the default Write condition context size limit
+// (config.DefaultWriteContextByteLimit; a limit set with server.WithConditionContextByteLimit only applies to Write).
+// An oversized context is reported like the other condition errors, as a [tuple.InvalidConditionalTupleError].
+func ValidateContextualTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	if err := ValidateTupleForWrite(typesys, tk); err != nil {
+		return err
+	}
+	return ValidateContextualTupleConditionContextSize(tk)
+}
+
+// ValidateContextualTupleConditionContextSize returns a [tuple.InvalidConditionalTupleError] if the
+// contextual tuple's condition context is larger than the default Write limit (config.DefaultWriteContextByteLimit).
+func ValidateContextualTupleConditionContextSize(tk *openfgav1.TupleKey) error {
+	if err := ValidateConditionContextSize(tk, config.DefaultWriteContextByteLimit); err != nil {
+		return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
+	}
+	return nil
+}
+
+// ValidateConditionContextSize returns an error if the encoded size of the tuple's
+// condition context is larger than limit bytes.
+func ValidateConditionContextSize(tk *openfgav1.TupleKey, limit int) error {
+	contextSize := proto.Size(tk.GetCondition().GetContext())
+	if contextSize > limit {
+		return fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", contextSize, limit)
 	}
 	return nil
 }

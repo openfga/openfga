@@ -5,11 +5,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
+	"github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -1600,4 +1604,45 @@ type document
 			}
 		})
 	}
+}
+
+func TestValidateContextualTuple(t *testing.T) {
+	const model = `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with in_region]
+
+condition in_region(region: string, note: string) {
+  region == 'eu' && note.size() > 0
+}`
+
+	ts, err := typesystem.NewAndValidate(t.Context(), parser.MustTransformDSLToProto(model))
+	require.NoError(t, err)
+
+	t.Run("accepts_context_within_the_limit", func(t *testing.T) {
+		tk := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_region",
+			testutils.MustNewStruct(t, map[string]any{"note": "x"}))
+		require.NoError(t, ValidateContextualTuple(ts, tk))
+		require.NoError(t, ValidateConditionContextSize(tk, proto.Size(tk.GetCondition().GetContext())))
+	})
+
+	t.Run("rejects_context_over_the_limit", func(t *testing.T) {
+		tk := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_region",
+			testutils.MustNewStruct(t, map[string]any{
+				"note": testutils.CreateRandomString(config.DefaultWriteContextByteLimit + 1),
+			}))
+		err := ValidateContextualTuple(ts, tk)
+		require.ErrorContains(t, err, "condition context size limit exceeded")
+		// same error type as the other condition errors, so it maps to validation_error like Write.
+		var conditionErr *tuple.InvalidConditionalTupleError
+		require.ErrorAs(t, err, &conditionErr)
+		require.Equal(t, int32(openfgav1.ErrorCode_validation_error), int32(status.Code(serverErrors.HandleTupleValidateError(err))))
+	})
+
+	t.Run("still_runs_write_validation", func(t *testing.T) {
+		tk := tuple.NewTupleKey("document:1", "viewer", "user:anne")
+		require.ErrorContains(t, ValidateContextualTuple(ts, tk), "condition is missing")
+	})
 }

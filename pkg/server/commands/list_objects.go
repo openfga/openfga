@@ -539,7 +539,7 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+		if err := validation.ValidateContextualTuple(typesys, ctxTuple); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}
@@ -728,7 +728,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	}
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+		if err := validation.ValidateContextualTuple(typesys, ctxTuple); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}
