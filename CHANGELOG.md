@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed `migrate.RunMigrations` failing with `context deadline exceeded` when `MigrationConfig.PingTimeout` is not set, or retrying without a limit when `Timeout` is not set either. An unset `PingTimeout` now uses the default datastore ping timeout, and an unset `Timeout` the default ping retry time, as the `migrate` command does. [#3425](https://github.com/openfga/openfga/issues/3425)
 
 ## [1.23.0] - 2026-11-20
 ### Added
@@ -22,7 +24,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
-- Fixed `migrate.RunMigrations` failing with `context deadline exceeded` when `MigrationConfig.PingTimeout` is not set, or retrying without a limit when `Timeout` is not set either. An unset `PingTimeout` now uses the default datastore ping timeout, and an unset `Timeout` the default ping retry time, as the `migrate` command does. [#3425](https://github.com/openfga/openfga/issues/3425)
 
 ### Security
 - Fixed known vulnerabilities in the `openfga/openfga` Docker image by updating Go to 1.27.4, `golang.org/x/net` to v0.62.0, and the bundled `grpc_health_probe` to v0.4.62. [#3405](https://github.com/openfga/openfga/pull/3405)
