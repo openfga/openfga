@@ -1,6 +1,10 @@
 package migrate_test
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -68,23 +72,36 @@ func TestMigrateDefaultPingTimeout(t *testing.T) {
 	}
 }
 
-func TestMigrateTimeoutAndPingTimeoutUnset(t *testing.T) {
-	// With neither field set, every ping used to fail and the retry loop had no limit, so the
-	// call never returned. Run it in a goroutine so a regression fails the test instead of
-	// hanging the suite.
-	uri := "file:" + filepath.Join(t.TempDir(), "openfga.db")
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- migrate.RunMigrations(migrate.MigrationConfig{
-			Engine: "sqlite",
-			URI:    uri,
-		})
-	}()
+// migrateChildURI is set in the environment of the child process that
+// TestMigrateTimeoutAndPingTimeoutUnset starts.
+const migrateChildURI = "OPENFGA_TEST_MIGRATE_CHILD_URI"
 
-	select {
-	case err := <-errCh:
-		require.NoError(t, err)
-	case <-time.After(30 * time.Second):
+func TestMigrateTimeoutAndPingTimeoutUnset(t *testing.T) {
+	if uri := os.Getenv(migrateChildURI); uri != "" {
+		migrateAndExit(uri)
+	}
+
+	// With neither field set, every ping used to fail and the retry loop had no limit, so the
+	// call never returned. Run it in a child process: a regression fails the test after 30s,
+	// and the child is killed and waited for, so no migration keeps retrying afterwards.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+t.Name()+"$")
+	cmd.Env = append(os.Environ(), migrateChildURI+"=file:"+filepath.Join(t.TempDir(), "openfga.db"))
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
 		t.Fatal("RunMigrations did not return within 30s with Timeout and PingTimeout unset")
 	}
+	require.NoError(t, err, string(out))
+}
+
+// migrateAndExit runs the migrations with Timeout and PingTimeout unset in the child process.
+// It exits directly, so TestMain doesn't remove the database containers that other test
+// processes share.
+func migrateAndExit(uri string) {
+	if err := migrate.RunMigrations(migrate.MigrationConfig{Engine: "sqlite", URI: uri}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
