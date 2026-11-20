@@ -22,6 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
 - Fixed `--request-timeout` not reaching Check, which always used the 3s default for the planner's penalty when a strategy errors. Setting it to a non-default value now changes Check's behavior. `server.WithRequestTimeout` now ignores values <= 0 and keeps the default. [#3400](https://github.com/openfga/openfga/pull/3400)
+- Fixed `--max-concurrent-reads-for-check`, `--max-concurrent-reads-for-list-objects` and `--max-concurrent-reads-for-list-users` not limiting reads on the SQL datastores. SQL iterators run their query on the first `Next`/`Head`, after `BoundedTupleReader` had released its slot; the returned iterators now hold a slot during each `Next` and `Head` call. [#3326](https://github.com/openfga/openfga/issues/3326)
 
 ### Security
 - Fixed known vulnerabilities in the `openfga/openfga` Docker image by updating Go to 1.27.4, `golang.org/x/net` to v0.62.0, and the bundled `grpc_health_probe` to v0.4.62. [#3405](https://github.com/openfga/openfga/pull/3405)

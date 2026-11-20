@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,11 +47,58 @@ func (itr *countingTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 	return i, nil
 }
 
+// boundedTupleIterator holds a concurrency slot while its first Next or Head runs. SQL iterators
+// run their query lazily on that first call, after Read has returned and released its slot.
+// Later calls only drain rows the open query already holds a connection for, so they skip the
+// limiter: waiting there could deadlock against a reader that holds the slot while waiting for
+// a pool connection. No slot is held between calls, so a consumer can issue nested reads.
+type boundedTupleIterator struct {
+	storage.TupleIterator
+	reader  *BoundedTupleReader
+	op      string
+	started atomic.Bool
+}
+
+func (itr *boundedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if itr.started.Load() {
+		return itr.TupleIterator.Next(ctx)
+	}
+	if err := itr.reader.acquire(ctx, itr.op); err != nil {
+		return nil, err
+	}
+	defer itr.reader.done()
+	t, err := itr.TupleIterator.Next(ctx)
+	itr.markStarted(err)
+	return t, err
+}
+
+func (itr *boundedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if itr.started.Load() {
+		return itr.TupleIterator.Head(ctx)
+	}
+	if err := itr.reader.acquire(ctx, itr.op); err != nil {
+		return nil, err
+	}
+	defer itr.reader.done()
+	t, err := itr.TupleIterator.Head(ctx)
+	itr.markStarted(err)
+	return t, err
+}
+
+// markStarted lets later calls skip the limiter only once the query has run. A failed first
+// call may not have opened rows, so its retry would query again and must stay bounded.
+func (itr *boundedTupleIterator) markStarted(err error) {
+	if err == nil || errors.Is(err, storage.ErrIteratorDone) {
+		itr.started.Store(true)
+	}
+}
+
 var (
 	_ storage.RelationshipTupleReader = (*BoundedTupleReader)(nil)
 	_ StorageInstrumentation          = (*BoundedTupleReader)(nil)
 	_ storage.TupleIterator           = (*countingTupleIterator)(nil)
 	_ adapter.Rows                    = (*boundedRows)(nil)
+	_ storage.TupleIterator           = (*boundedTupleIterator)(nil)
 
 	concurrentReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
@@ -128,7 +176,8 @@ type BoundedTupleReader struct {
 }
 
 // NewBoundedTupleReader returns a wrapper over a datastore that makes sure that there are, at most,
-// op.Concurrency concurrent calls to Read, ReadUserTuple, ReadUsersetTuples, and Querier.Execute.
+// op.Concurrency concurrent calls to Read, ReadUserTuple, ReadUsersetTuples, and Querier.Execute,
+// and to Next and Head on the iterators the Read* methods return.
 // Consumers can then rest assured that one client will not hoard all the database connections available.
 // If op.ThrottlingEnabled, calls beyond op.ThrottleThreshold additionally incur op.ThrottleDuration of latency.
 func NewBoundedTupleReader(wrapped storage.RelationshipTupleReader, op *Operation) *BoundedTupleReader {
@@ -194,7 +243,7 @@ func (b *BoundedTupleReader) Read(ctx context.Context, store string, filter stor
 	if itr == nil || err != nil {
 		return itr, err
 	}
-	return &countingTupleIterator{itr, &b.countItems}, nil
+	return b.wrapIterator(itr, storage.OperationRead), nil
 }
 
 // ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -214,7 +263,7 @@ func (b *BoundedTupleReader) ReadUsersetTuples(
 	if itr == nil || err != nil {
 		return itr, err
 	}
-	return &countingTupleIterator{itr, &b.countItems}, nil
+	return b.wrapIterator(itr, storage.OperationReadUsersetTuples), nil
 }
 
 // ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -236,7 +285,7 @@ func (b *BoundedTupleReader) ReadStartingWithUser(
 	if itr == nil || err != nil {
 		return itr, err
 	}
-	return &countingTupleIterator{itr, &b.countItems}, nil
+	return b.wrapIterator(itr, storage.OperationReadStartingWithUser), nil
 }
 
 func (b *BoundedTupleReader) instrument(ctx context.Context, op string, d time.Duration, vec *prometheus.HistogramVec) {
@@ -250,12 +299,8 @@ func (b *BoundedTupleReader) instrument(ctx context.Context, op string, d time.D
 // After a threshold of accesses has been granted, an artificial amount of latency will be added to the access.
 func (b *BoundedTupleReader) bound(ctx context.Context, op string) error {
 	startTime := time.Now()
-	if err := b.waitForLimiter(ctx); err != nil {
+	if err := b.acquire(ctx, op); err != nil {
 		return err
-	}
-
-	if c := time.Since(startTime); c > concurrentTimeWaitingThreshold {
-		b.instrument(ctx, op, c, concurrentReadDelayMsHistogram)
 	}
 
 	reads := b.increaseReads()
@@ -272,6 +317,28 @@ func (b *BoundedTupleReader) bound(ctx context.Context, op string) error {
 		b.instrument(ctx, op, time.Since(startTime), throttledReadDelayMsHistogram)
 	}
 	return nil
+}
+
+// acquire waits for a concurrency slot and records the time spent waiting.
+func (b *BoundedTupleReader) acquire(ctx context.Context, op string) error {
+	startTime := time.Now()
+	if err := b.waitForLimiter(ctx); err != nil {
+		return err
+	}
+
+	if c := time.Since(startTime); c > concurrentTimeWaitingThreshold {
+		b.instrument(ctx, op, c, concurrentReadDelayMsHistogram)
+	}
+	return nil
+}
+
+// wrapIterator counts the items read and bounds each Next and Head call, where lazy iterators run their query.
+func (b *BoundedTupleReader) wrapIterator(itr storage.TupleIterator, op string) storage.TupleIterator {
+	return &boundedTupleIterator{
+		TupleIterator: &countingTupleIterator{itr, &b.countItems},
+		reader:        b,
+		op:            op,
+	}
 }
 
 // waitForLimiter respects context errors and returns an error only if it couldn't send an item to the channel.
