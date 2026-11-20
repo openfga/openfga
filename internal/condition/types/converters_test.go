@@ -91,6 +91,45 @@ func TestNumericTypeConverterUint64(t *testing.T) {
 	})
 }
 
+func TestNumericTypeConverterFloat64(t *testing.T) {
+	t.Run("decimal_strings_convert_to_nearest_float64", func(t *testing.T) {
+		// These values have no exact binary representation, so the conversion
+		// has to round them instead of rejecting them as unrepresentable.
+		tests := map[string]float64{
+			"0.1":    0.1,
+			"3.14":   3.14,
+			"-2.718": -2.718,
+			"100.7":  100.7,
+			"1e-3":   0.001,
+		}
+		for input, want := range tests {
+			t.Run(input, func(t *testing.T) {
+				got, err := numericTypeConverterFunc[float64](input)
+				require.NoError(t, err)
+				require.InDelta(t, want, got.(float64), 1e-12)
+			})
+		}
+	})
+
+	t.Run("max_float64_string_converts", func(t *testing.T) {
+		got, err := numericTypeConverterFunc[float64]("1.7976931348623157e308")
+		require.NoError(t, err)
+		require.InEpsilon(t, math.MaxFloat64, got.(float64), 1e-12)
+	})
+
+	t.Run("overflow_errors", func(t *testing.T) {
+		for _, input := range []string{"1.79769313486231570814527423731704356798070e+309", "-1.79769313486231570814527423731704356798070e+309"} {
+			_, err := numericTypeConverterFunc[float64](input)
+			require.Error(t, err)
+		}
+	})
+
+	t.Run("underflow_to_zero_errors", func(t *testing.T) {
+		_, err := numericTypeConverterFunc[float64]("1e-400")
+		require.Error(t, err)
+	})
+}
+
 func TestNumericTypeConverterRejectsNonFinite(t *testing.T) {
 	t.Run("rejects_infinity_string_values", func(t *testing.T) {
 		for _, input := range []string{"-Inf", "+Inf", "Inf", "-inf"} {
