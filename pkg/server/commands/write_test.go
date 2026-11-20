@@ -142,9 +142,10 @@ func TestWriteCommand(t *testing.T) {
 			expectedError: "rpc error: code = Code(2004) desc = duplicate tuple in write: user: 'user:0', relation: 'viewer', object: 'document:0'",
 		},
 		{
-			name: "same_item_appeared_in_writes_and_deletes",
+			name: "same_item_appeared_in_writes_and_deletes_replaces_it",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			deletes: &openfgav1.WriteRequestDeletes{
 				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{items[2], items[1]},
@@ -152,6 +153,21 @@ func TestWriteCommand(t *testing.T) {
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
 					tuple.TupleKeyWithoutConditionToTupleKey(items[0]),
+					tuple.TupleKeyWithoutConditionToTupleKey(items[1]),
+				},
+			},
+			expectedResponse: &openfgav1.WriteResponse{},
+		},
+		{
+			name: "same_item_deleted_twice_with_a_write",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
+			},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{items[1], items[1]},
+			},
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					tuple.TupleKeyWithoutConditionToTupleKey(items[1]),
 				},
 			},

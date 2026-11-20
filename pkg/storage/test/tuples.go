@@ -959,6 +959,67 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
+	t.Run("deleting_and_writing_a_tuple_in_one_call_replaces_its_condition", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		withContext := func(value string) *openfgav1.TupleKey {
+			return &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10", Condition: &openfgav1.RelationshipCondition{
+				Name:    "condition1",
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": value}),
+			}}
+		}
+		oldTuple, newTuple := withContext("old"), withContext("new")
+		deleteKey := tuple.TupleKeyToTupleKeyWithoutCondition(oldTuple)
+
+		require.NoError(t, datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{oldTuple}))
+
+		for _, opts := range [][]storage.TupleWriteOption{
+			nil,
+			{storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore)},
+		} {
+			require.NoError(t, datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{deleteKey}, []*openfgav1.TupleKey{newTuple}, opts...))
+		}
+
+		got, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: newTuple.GetObject(), Relation: newTuple.GetRelation(), User: newTuple.GetUser()}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		if diff := cmp.Diff(newTuple, got.GetKey(), protocmp.Transform()); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+
+		// Each call records the delete before the write.
+		redacted := tuple.NewTupleKey(oldTuple.GetObject(), oldTuple.GetRelation(), oldTuple.GetUser())
+		expectedChanges := []*openfgav1.TupleChange{
+			{TupleKey: oldTuple, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE},
+			{TupleKey: redacted, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE},
+			{TupleKey: newTuple, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE},
+			{TupleKey: redacted, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE},
+			{TupleKey: newTuple, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE},
+		}
+		readChangesOpts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
+		require.NoError(t, err)
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("deleting_a_missing_tuple_and_writing_it_in_one_call", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "user:10"}
+		deleteKey := tuple.TupleKeyToTupleKeyWithoutCondition(tk)
+
+		// Without on_missing ignore, deleting a tuple that doesn't exist still fails.
+		err := datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{deleteKey}, []*openfgav1.TupleKey{tk})
+		require.ErrorContains(t, err, "cannot delete a tuple which does not exist")
+
+		require.NoError(t, datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{deleteKey}, []*openfgav1.TupleKey{tk},
+			storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore)))
+
+		_, err = datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: tk.GetObject(), Relation: tk.GetRelation(), User: tk.GetUser()}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+	})
+
 	t.Run("inserting_a_tuple_twice_ignore_duplicate_with_cond", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{

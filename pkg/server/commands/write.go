@@ -186,29 +186,31 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
+// The same tuple can appear once in the deletes and once in the writes: the delete is applied first, so the
+// request replaces the tuple, e.g. to change its condition or context, in a single transaction.
 func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 	deletes []*openfgav1.TupleKeyWithoutCondition,
 	writes []*openfgav1.TupleKey,
 ) error {
-	tuples := map[string]struct{}{}
-
+	deleteKeys := make(map[string]struct{}, len(deletes))
 	for _, tk := range deletes {
 		key := tupleUtils.TupleKeyToString(tk)
-		if _, ok := tuples[key]; ok {
+		if _, ok := deleteKeys[key]; ok {
 			return serverErrors.DuplicateTupleInWrite(tk)
 		}
-		tuples[key] = struct{}{}
+		deleteKeys[key] = struct{}{}
 	}
 
+	writeKeys := make(map[string]struct{}, len(writes))
 	for _, tk := range writes {
 		key := tupleUtils.TupleKeyToString(tk)
-		if _, ok := tuples[key]; ok {
+		if _, ok := writeKeys[key]; ok {
 			return serverErrors.DuplicateTupleInWrite(tk)
 		}
-		tuples[key] = struct{}{}
+		writeKeys[key] = struct{}{}
 	}
 
-	if len(tuples) > c.datastore.MaxTuplesPerWrite() {
+	if len(deletes)+len(writes) > c.datastore.MaxTuplesPerWrite() {
 		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWrite())
 	}
 	return nil

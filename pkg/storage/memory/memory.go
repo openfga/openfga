@@ -453,6 +453,8 @@ func sanitizeTuplesWriteDelete(
 ) ([]int, []int, error) {
 	var duplicateDeletes []int
 	var duplicateWrites []int
+	// Tuples deleted by this request. A write of one of them inserts it again instead of being a duplicate.
+	deleted := make(map[string]struct{}, len(deletes))
 	for i, tk := range deletes {
 		if find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) == nil {
 			if opts.OnMissingDelete == storage.OnMissingDeleteIgnore {
@@ -461,8 +463,12 @@ func sanitizeTuplesWriteDelete(
 			}
 			return nil, nil, storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
+		deleted[tupleUtils.TupleKeyToString(tk)] = struct{}{}
 	}
 	for i, tk := range writes {
+		if _, ok := deleted[tupleUtils.TupleKeyToString(tk)]; ok {
+			continue
+		}
 		record := find(records, tk)
 		if record != nil {
 			if opts.OnDuplicateInsert == storage.OnDuplicateInsertIgnore {
