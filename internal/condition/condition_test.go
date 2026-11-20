@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -107,6 +108,72 @@ func TestNewCompiled(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCompileResultPersistence(t *testing.T) {
+	t.Run("invalid_sequential", func(t *testing.T) {
+		c := condition.NewUncompiled(&openfgav1.Condition{
+			Name:       "broken",
+			Expression: "undeclared_parameter",
+		})
+		firstErr := c.Compile()
+		secondErr := c.Compile()
+		t.Logf("first Compile: %v; second Compile: %v", firstErr, secondErr)
+		var compilationErr *condition.CompilationError
+		require.ErrorAs(t, firstErr, &compilationErr)
+		require.ErrorAs(t, secondErr, &compilationErr)
+		require.EqualError(t, secondErr, firstErr.Error())
+	})
+
+	t.Run("invalid_concurrent", func(t *testing.T) {
+		c := condition.NewUncompiled(&openfgav1.Condition{
+			Name:       "broken",
+			Expression: "undeclared_parameter",
+		})
+		const callers = 8
+		start := make(chan struct{})
+		results := make(chan error, callers)
+		var workers sync.WaitGroup
+		for range callers {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				<-start
+				results <- c.Compile()
+			}()
+		}
+		close(start)
+		workers.Wait()
+		close(results)
+		errors := make([]error, 0, callers)
+		nilCount := 0
+		for err := range results {
+			errors = append(errors, err)
+			if err == nil {
+				nilCount++
+			}
+		}
+		t.Logf("concurrent Compile results: callers=%d errors=%d nil=%d", callers, len(errors)-nilCount, nilCount)
+		for _, err := range errors {
+			var compilationErr *condition.CompilationError
+			require.ErrorAs(t, err, &compilationErr)
+		}
+	})
+
+	t.Run("valid", func(t *testing.T) {
+		c := condition.NewUncompiled(&openfgav1.Condition{
+			Name:       "valid",
+			Expression: "param1 == 'ok'",
+			Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+				"param1": {TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING},
+			},
+		})
+		require.NoError(t, c.Compile())
+		require.NoError(t, c.Compile())
+		result, err := c.Evaluate(context.Background(), map[string]*structpb.Value{"param1": structpb.NewStringValue("ok")})
+		require.NoError(t, err)
+		require.True(t, result.ConditionMet)
+	})
 }
 
 func TestEvaluate(t *testing.T) {

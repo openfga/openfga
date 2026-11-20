@@ -60,22 +60,20 @@ type EvaluableCondition struct {
 	celEnv         *cel.Env
 	celProgram     cel.Program
 	compileOnce    sync.Once
+	compileErr     error
 }
 
 // Compile compiles a condition expression with a CEL environment
 // constructed from the condition's parameter type definitions into a valid
 // AST that can be evaluated at a later time.
+// The first result, including any error, is retained for subsequent calls.
+// Create a new EvaluableCondition to compile a different definition.
 func (e *EvaluableCondition) Compile() error {
-	var compileErr error
-
 	e.compileOnce.Do(func() {
-		if err := e.compile(); err != nil {
-			compileErr = err
-			return
-		}
+		e.compileErr = e.compile()
 	})
 
-	return compileErr
+	return e.compileErr
 }
 
 func (e *EvaluableCondition) compile() error {
