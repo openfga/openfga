@@ -97,6 +97,11 @@ func NewEncodedError(errorCode int32, message string) *EncodedError {
 	var code string
 
 	switch {
+	case errorCode == int32(openfgav1.AuthErrorCode_forbidden):
+		// The principal is authenticated but not allowed to perform the action.
+		httpStatusCode = http.StatusForbidden
+		code = openfgav1.AuthErrorCode(errorCode).String()
+		grpcStatusCode = codes.PermissionDenied
 	case errorCode >= cFirstAuthenticationErrorCode && errorCode < cFirstValidationErrorCode:
 		httpStatusCode = http.StatusUnauthorized
 		code = openfgav1.AuthErrorCode(errorCode).String()

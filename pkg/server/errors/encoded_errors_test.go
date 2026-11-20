@@ -94,6 +94,14 @@ func TestEncodedError(t *testing.T) {
 			expectedCodeString:     "unauthenticated",
 		},
 		{
+			_name:                  "auth_error:_forbidden",
+			errorCode:              int32(openfgav1.AuthErrorCode_forbidden),
+			message:                "error message",
+			expectedHTTPStatusCode: http.StatusForbidden,
+			expectedCode:           1600,
+			expectedCodeString:     "forbidden",
+		},
+		{
 			_name:                  "validation_error",
 			errorCode:              int32(openfgav1.ErrorCode_validation_error),
 			message:                "error message",
@@ -133,6 +141,40 @@ func TestEncodedError(t *testing.T) {
 			require.Equal(t, test.expectedHTTPStatusCode, actualError.HTTPStatusCode)
 			require.Equal(t, test.expectedCodeString, actualError.Code())
 			require.Equal(t, int32(test.expectedCode), actualError.CodeValue())
+		})
+	}
+}
+
+// TestEncodedError_AuthErrorStatusCodes checks that a failed authentication (unauthenticated) is reported
+// as 401 / Unauthenticated, while an authenticated principal that is not allowed to perform the action
+// (forbidden) is reported as 403 / PermissionDenied, as documented in the API's ForbiddenResponse.
+func TestEncodedError_AuthErrorStatusCodes(t *testing.T) {
+	tests := map[string]struct {
+		errorCode            openfgav1.AuthErrorCode
+		expectedHTTPStatus   int
+		expectedGRPCStatus   codes.Code
+		expectedCodeAsString string
+	}{
+		"unauthenticated": {
+			errorCode:            openfgav1.AuthErrorCode_unauthenticated,
+			expectedHTTPStatus:   http.StatusUnauthorized,
+			expectedGRPCStatus:   codes.Unauthenticated,
+			expectedCodeAsString: "unauthenticated",
+		},
+		"forbidden": {
+			errorCode:            openfgav1.AuthErrorCode_forbidden,
+			expectedHTTPStatus:   http.StatusForbidden,
+			expectedGRPCStatus:   codes.PermissionDenied,
+			expectedCodeAsString: "forbidden",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			actualError := NewEncodedError(int32(test.errorCode), "error message")
+
+			require.Equal(t, test.expectedHTTPStatus, actualError.HTTPStatus())
+			require.Equal(t, test.expectedGRPCStatus, actualError.GRPCStatus().Code())
+			require.Equal(t, test.expectedCodeAsString, actualError.Code())
 		})
 	}
 }
