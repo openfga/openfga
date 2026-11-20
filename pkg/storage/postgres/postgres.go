@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgpassfile"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
@@ -59,6 +60,11 @@ type Datastore struct {
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
+
+// cancelDeadlineDelay bounds how long a cancelled query keeps its connection
+// after the cancel request is sent. A server that has not answered by then is
+// treated as unreachable and the connection is closed, as it is by default.
+const cancelDeadlineDelay = 5 * time.Second
 
 func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
 	c, err := pgxpool.ParseConfig(uri)
@@ -110,6 +116,17 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 
 	if cfg.PingTimeout != 0 {
 		c.PingTimeout = cfg.PingTimeout
+	}
+
+	if cfg.CancelRequestDelay > 0 {
+		delay := cfg.CancelRequestDelay
+		c.ConnConfig.BuildContextWatcherHandler = func(pgConn *pgconn.PgConn) ctxwatch.Handler {
+			return &pgconn.CancelRequestContextWatcherHandler{
+				Conn:               pgConn,
+				CancelRequestDelay: delay,
+				DeadlineDelay:      cancelDeadlineDelay,
+			}
+		}
 	}
 
 	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})

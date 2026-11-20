@@ -173,6 +173,13 @@ type DatastoreConfig struct {
 	// PingRetryMaxElapsedTime is the maximum time to retry datastore ping attempts.
 	PingRetryMaxElapsedTime time.Duration
 
+	// CancelRequestDelay, when greater than zero, makes a query whose context is
+	// cancelled while the database is still running it end with a cancel request
+	// sent to the server after this delay, keeping the pool connection. Zero
+	// keeps the driver default, which closes the connection and dials a new one.
+	// This is only available in PostgreSQL.
+	CancelRequestDelay time.Duration
+
 	// Metrics is configuration for the Datastore metrics.
 	Metrics DatastoreMetricsConfig
 }
@@ -568,6 +575,10 @@ func (cfg *Config) VerifyServerSettings() error {
 
 	if cfg.Datastore.PingRetryMaxElapsedTime < cfg.Datastore.PingTimeout {
 		return errors.New("datastore PingRetryMaxElapsedTime must not be less than datastore PingTimeout")
+	}
+
+	if cfg.Datastore.CancelRequestDelay < 0 {
+		return errors.New("datastore CancelRequestDelay must be non-negative time duration")
 	}
 
 	return nil

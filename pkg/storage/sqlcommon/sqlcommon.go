@@ -57,6 +57,12 @@ type Config struct {
 	PingTimeout             time.Duration
 	PingRetryMaxElapsedTime time.Duration
 
+	// CancelRequestDelay, when greater than zero, makes a query whose context is
+	// cancelled while the server is still running it end with a PostgreSQL cancel
+	// request sent after this delay, keeping the pool connection. Zero keeps the
+	// driver default, which closes the connection. PostgreSQL only.
+	CancelRequestDelay time.Duration
+
 	ExportMetrics bool
 }
 
@@ -127,6 +133,15 @@ func WithMaxTypesPerAuthorizationModel(maxTypes int) DatastoreOption {
 func WithMaxOpenConns(c int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MaxOpenConns = c
+	}
+}
+
+// WithCancelRequestDelay returns a DatastoreOption that sets the
+// delay before a cancelled query is cancelled server-side instead of
+// closing its connection. PostgreSQL only.
+func WithCancelRequestDelay(d time.Duration) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.CancelRequestDelay = d
 	}
 }
 
