@@ -97,6 +97,11 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
+	var duplicateContextualTuple *tuple.DuplicateContextualTupleError
+	if errors.As(err, &duplicateContextualTuple) {
+		return serverErrors.HandleTupleValidateError(duplicateContextualTuple)
+	}
+
 	var invalidTupleDeprecate *InvalidTupleError
 	if errors.As(err, &invalidTupleDeprecate) {
 		tupleError := tuple.InvalidTupleError{Cause: err}

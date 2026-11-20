@@ -543,6 +543,9 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}
+	if err := validation.ValidateNoConflictingContextualTuples(req.GetContextualTuples().GetTupleKeys()); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
 
 	_, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
@@ -731,6 +734,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
+	}
+	if err := validation.ValidateNoConflictingContextualTuples(req.GetContextualTuples().GetTupleKeys()); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
 	}
 
 	_, err := typesys.GetRelation(targetObjectType, targetRelation)

@@ -12,6 +12,8 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -254,6 +256,20 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 				Message: "invalid tuple: " + errMsg,
 			},
 		},
+		`test_duplicate_contextual_tuple_error`: {
+			inputError: &tuple.DuplicateContextualTupleError{TupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_us", nil)},
+			expectedOutput: &openfgav1.CheckError{
+				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_duplicate_contextual_tuple},
+				Message: "Duplicate contextual tuple 'document:1#viewer@user:anne (condition in_us)' with a different condition",
+			},
+		},
+		`test_duplicate_contextual_tuple_status_error`: {
+			inputError: status.Error(codes.Code(openfgav1.ErrorCode_duplicate_contextual_tuple), errMsg),
+			expectedOutput: &openfgav1.CheckError{
+				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_duplicate_contextual_tuple},
+				Message: "rpc error: code = Code(2055) desc = " + errMsg,
+			},
+		},
 		`test_resolution_depth_error`: {
 			inputError: graph.ErrResolutionDepthExceeded,
 			expectedOutput: &openfgav1.CheckError{
@@ -329,6 +345,90 @@ func TestTransformCheckResultToProto(t *testing.T) {
 		require.Equal(t, expectedHappyResult, resultOne)
 		require.Equal(t, expectedSadResult, resultTwo)
 	})
+}
+
+// TestBatchCheckRejectsConflictingContextualTuples verifies that a BatchCheck item whose contextual
+// tuples repeat a user, relation and object with a different condition fails with
+// duplicate_contextual_tuple, without affecting other items, on both the v1 and v2 check paths.
+func TestBatchCheckRejectsConflictingContextualTuples(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	for name, experimentals := range map[string][]string{
+		"v1": nil,
+		"v2": {config.ExperimentalWeightedGraphCheck},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+			s := MustNewServerWithOpts(
+				WithDatastore(ds),
+				WithFeatureFlagClient(featureflags.NewDefaultClient(experimentals)),
+			)
+			t.Cleanup(s.Close)
+
+			ctx := context.Background()
+			createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "test"})
+			require.NoError(t, err)
+			storeID := createStoreResp.GetId()
+
+			model := testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user with in_eu, user with in_us]
+
+				condition in_eu(region: string) {
+					region == "eu"
+				}
+
+				condition in_us(region: string) {
+					region == "us"
+				}
+			`)
+			writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+				StoreId:         storeID,
+				SchemaVersion:   model.GetSchemaVersion(),
+				TypeDefinitions: model.GetTypeDefinitions(),
+				Conditions:      model.GetConditions(),
+			})
+			require.NoError(t, err)
+
+			inEU := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_eu", nil)
+			inUS := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "in_us", nil)
+			reqCtx := testutils.MustNewStruct(t, map[string]any{"region": "eu"})
+			tk := &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "user:anne"}
+
+			ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
+			resp, err := s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+				Checks: []*openfgav1.BatchCheckItem{
+					{
+						TupleKey:         tk,
+						ContextualTuples: &openfgav1.ContextualTupleKeys{TupleKeys: []*openfgav1.TupleKey{inEU, inUS}},
+						Context:          reqCtx,
+						CorrelationId:    "conflicting",
+					},
+					{
+						TupleKey:         tk,
+						ContextualTuples: &openfgav1.ContextualTupleKeys{TupleKeys: []*openfgav1.TupleKey{inEU, inEU}},
+						Context:          reqCtx,
+						CorrelationId:    "identical",
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			require.Equal(t,
+				openfgav1.ErrorCode_duplicate_contextual_tuple,
+				resp.GetResult()["conflicting"].GetError().GetInputError(),
+			)
+			require.True(t, resp.GetResult()["identical"].GetAllowed())
+		})
+	}
 }
 
 // TestBatchCheckV2UsedWhenFlagEnabled verifies that when ExperimentalWeightedGraphCheck is

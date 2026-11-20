@@ -3674,3 +3674,228 @@ tests:
             context:
               "x": "2"
             expectation:
+  # Contextual tuples that repeat a user, relation and object with a different condition are rejected with
+  # duplicate_contextual_tuple (2055): Check would evaluate only one of them. Identical copies are accepted.
+  - name: duplicate_contextual_tuples_with_different_conditions
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user, user with in_eu, user with in_us, user with in_region]
+
+          condition in_eu(region: string) {
+            region == "eu"
+          }
+
+          condition in_us(region: string) {
+            region == "us"
+          }
+
+          condition in_region(region: string, allowed: string) {
+            region == allowed
+          }
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_eu
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_us
+            context:
+              region: eu
+            errorCode: 2055
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_us
+            context:
+              region: eu
+            errorCode: 2055
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: us
+            context:
+              region: eu
+            errorCode: 2055
+          # the repeated tuple doesn't have to be the one being checked
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:bob
+                relation: viewer
+                object: document:1
+              - user: user:anne
+                relation: viewer
+                object: document:2
+                condition:
+                  name: in_eu
+              - user: user:anne
+                relation: viewer
+                object: document:2
+                condition:
+                  name: in_us
+            context:
+              region: eu
+            errorCode: 2055
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+              - user: user:anne # identical copy
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+            context:
+              region: eu
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+              - user: user:anne # identical copy
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_region
+                  context:
+                    allowed: eu
+            context:
+              region: us
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_eu
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_us
+            context:
+              region: eu
+            errorCode: 2055
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_eu
+              - user: user:anne # identical copy
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_eu
+            context:
+              region: eu
+            expectation:
+              - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_eu
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_us
+            context:
+              region: eu
+            errorCode: 2055
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - user: user:anne
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_eu
+              - user: user:anne # identical copy
+                relation: viewer
+                object: document:1
+                condition:
+                  name: in_eu
+            context:
+              region: eu
+            expectation:
+              - user:anne

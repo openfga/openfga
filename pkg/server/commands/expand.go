@@ -69,6 +69,9 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}
+	if err := validation.ValidateNoConflictingContextualTuples(req.GetContextualTuples().GetTupleKeys()); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
 
 	err := validation.ValidateObject(typesys, tk)
 	if err != nil {

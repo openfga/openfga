@@ -19,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -183,6 +184,9 @@ func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) 
 	if err := validateCheckCommandParams(params); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
+	if err := validation.ValidateNoConflictingContextualTuples(params.ContextualTuples.GetTupleKeys()); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
 
 	res, err := q.resolve(ctx, params)
 	if err == nil || IsV2CheckTerminalError(err) || q.fallback == nil {
@@ -337,7 +341,7 @@ func IsV2CheckTerminalError(err error) bool {
 	}
 	if st, ok := status.FromError(err); ok {
 		switch openfgav1.ErrorCode(st.Code()) {
-		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple, openfgav1.ErrorCode_duplicate_contextual_tuple:
 			return true
 		}
 	}

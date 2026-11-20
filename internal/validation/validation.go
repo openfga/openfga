@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -53,6 +54,47 @@ func ValidateTupleForWrite(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKe
 		}
 	}
 	return nil
+}
+
+// ValidateNoConflictingContextualTuples returns a [tuple.DuplicateContextualTupleError] if more than one
+// contextual tuple has the same user, relation and object but a different condition name or condition
+// context. Check evaluates only one tuple per user, relation and object, so such a request has no single
+// answer. Identical copies are allowed.
+func ValidateNoConflictingContextualTuples(tks []*openfgav1.TupleKey) error {
+	if len(tks) < 2 {
+		return nil
+	}
+
+	type userRelationObject struct{ user, relation, object string }
+	seen := make(map[userRelationObject]*openfgav1.RelationshipCondition, len(tks))
+	for _, tk := range tks {
+		key := userRelationObject{tk.GetUser(), tk.GetRelation(), tk.GetObject()}
+		prev, ok := seen[key]
+		if !ok {
+			seen[key] = tk.GetCondition()
+			continue
+		}
+		if !sameCondition(prev, tk.GetCondition()) {
+			return &tuple.DuplicateContextualTupleError{TupleKey: tk}
+		}
+	}
+	return nil
+}
+
+// sameCondition reports whether a and b have the same name and context. A missing context is
+// treated as an empty one.
+func sameCondition(a, b *openfgav1.RelationshipCondition) bool {
+	if a.GetName() != b.GetName() {
+		return false
+	}
+	ctxA, ctxB := a.GetContext(), b.GetContext()
+	if ctxA == nil {
+		ctxA = &structpb.Struct{}
+	}
+	if ctxB == nil {
+		ctxB = &structpb.Struct{}
+	}
+	return proto.Equal(ctxA, ctxB)
 }
 
 // ValidateTupleForRead returns nil if a tuple is valid according to the provided model.
