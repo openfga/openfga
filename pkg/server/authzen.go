@@ -521,6 +521,11 @@ func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSear
 		return nil, err
 	}
 
+	// StreamedListObjects reports warnings as trailers, which a unary response cannot carry.
+	for _, warning := range collector.trailer.Get(WarningHeader) {
+		s.transport.SetHeader(ctx, WarningHeader, warning)
+	}
+
 	resources := make([]*authzenv1.Resource, 0, len(collector.objects))
 	for _, objID := range collector.objects {
 		if typ, id, ok := strings.Cut(objID, ":"); ok {
@@ -535,13 +540,14 @@ func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSear
 type objectCollector struct {
 	ctx     context.Context
 	objects []string
+	trailer metadata.MD
 	grpc.ServerStream
 }
 
 func (c *objectCollector) Context() context.Context     { return c.ctx }
 func (c *objectCollector) SetHeader(metadata.MD) error  { return nil }
 func (c *objectCollector) SendHeader(metadata.MD) error { return nil }
-func (c *objectCollector) SetTrailer(metadata.MD)       {}
+func (c *objectCollector) SetTrailer(md metadata.MD)    { c.trailer = metadata.Join(c.trailer, md) }
 func (c *objectCollector) SendMsg(any) error            { return nil }
 func (c *objectCollector) RecvMsg(any) error            { return nil }
 func (c *objectCollector) Send(resp *openfgav1.StreamedListObjectsResponse) error {

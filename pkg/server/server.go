@@ -49,6 +49,13 @@ const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 
+	// WarningHeader is the response header (or trailer, for streaming responses) set when
+	// a request succeeded but its results come with a caveat.
+	WarningHeader = "X-Openfga-Warning"
+	// WarningDeadlineExceeded is the WarningHeader value set when the deadline was hit
+	// before the evaluation completed, which means that the results are likely incomplete.
+	WarningDeadlineExceeded = "deadline-exceeded"
+
 	allowedLabel = "allowed"
 
 	throttleTypeDatastore = "datastore"

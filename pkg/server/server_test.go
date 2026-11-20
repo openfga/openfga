@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"net"
 	"strconv"
 	"sync"
 	"testing"
@@ -19,8 +21,12 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
@@ -1336,7 +1342,59 @@ func TestResolveAuthorizationModel(t *testing.T) {
 type mockStreamServer struct {
 	grpc.ServerStream
 
-	ctx context.Context
+	ctx     context.Context
+	trailer metadata.MD
+}
+
+func (m *mockStreamServer) SetTrailer(md metadata.MD) {
+	m.trailer = metadata.Join(m.trailer, md)
+}
+
+// recordingTransport is a gateway.Transport that records the response headers set by the server.
+type recordingTransport struct {
+	mu      sync.Mutex
+	headers map[string]string
+}
+
+func (r *recordingTransport) SetHeader(_ context.Context, key, value string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.headers == nil {
+		r.headers = make(map[string]string)
+	}
+	r.headers[key] = value
+}
+
+func (r *recordingTransport) header(key string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.headers[key]
+}
+
+// deadlineDatastore is a datastore whose tuple reads fail with context.DeadlineExceeded,
+// as when the datastore hits a timeout of its own while the request context is still live.
+type deadlineDatastore struct {
+	storage.OpenFGADatastore
+}
+
+func (d *deadlineDatastore) Close() {}
+
+func (d *deadlineDatastore) Read(context.Context, string, storage.ReadFilter, storage.ReadOptions) (storage.TupleIterator, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func (d *deadlineDatastore) ReadUsersetTuples(context.Context, string, storage.ReadUsersetTuplesFilter, storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func (d *deadlineDatastore) ReadStartingWithUser(context.Context, string, storage.ReadStartingWithUserFilter, storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func (r *recordingTransport) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.headers = nil
 }
 
 func NewMockStreamServer(ctx context.Context) *mockStreamServer {
@@ -1981,8 +2039,12 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 
 	deadline := 50 * time.Millisecond
 
+	transport := &recordingTransport{}
+
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
+		WithTransport(transport),
+		WithExperimentals(serverconfig.ExperimentalAuthZen),
 
 		WithListObjectsPipelineEnabled(false),
 		WithDispatchThrottlingCheckResolverEnabled(true),
@@ -2034,6 +2096,176 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.LessOrEqual(t, len(resp.GetObjects()), 1) // race condition of context cancellation
+		require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
+	})
+
+	t.Run("streamed_list_objects_return_no_error_and_warning_trailer", func(t *testing.T) {
+		srv := NewMockStreamServer(ctx)
+		err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
+		}, srv)
+
+		require.NoError(t, err)
+		require.Equal(t, []string{WarningDeadlineExceeded}, srv.trailer.Get(WarningHeader))
+	})
+
+	t.Run("streamed_list_objects_warning_trailer_reaches_grpc_client", func(t *testing.T) {
+		lis := bufconn.Listen(1024 * 1024)
+		grpcServer := grpc.NewServer()
+		openfgav1.RegisterOpenFGAServiceServer(grpcServer, s)
+		go func() { _ = grpcServer.Serve(lis) }()
+		defer grpcServer.Stop()
+
+		conn, err := grpc.NewClient("passthrough:///bufnet",
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		stream, err := openfgav1.NewOpenFGAServiceClient(conn).StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
+		})
+		require.NoError(t, err)
+		for {
+			_, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+		}
+		require.Equal(t, []string{WarningDeadlineExceeded}, stream.Trailer().Get(WarningHeader))
+	})
+
+	t.Run("resource_search_return_no_error_and_warning_header", func(t *testing.T) {
+		transport.reset()
+		resp, err := s.ResourceSearch(ctx, &authzenv1.ResourceSearchRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "tyler"},
+			Action:   &authzenv1.Action{Name: "viewer"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
+	})
+
+	t.Run("slow_datastore_return_no_error_and_warning", func(t *testing.T) {
+		// Each of these algorithms reports the deadline differently.
+		for _, experimental := range []string{
+			"", // fallback algorithm
+			serverconfig.ExperimentalListObjectsOptimizations,
+			serverconfig.ExperimentalPipelineListObjects,
+		} {
+			transport := &recordingTransport{}
+			slowDS := mockstorage.NewMockSlowDataStorage(ds, 3*deadline) // No read completes before the deadline
+			s := MustNewServerWithOpts(
+				WithDatastore(slowDS),
+				WithTransport(transport),
+				WithExperimentals(experimental),
+				WithListObjectsPipelineEnabled(experimental == serverconfig.ExperimentalPipelineListObjects),
+				WithListObjectsDeadline(deadline),
+			)
+			t.Cleanup(s.Close)
+
+			resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				User:                 "user:tyler",
+				Relation:             "viewer",
+				Type:                 "document",
+			})
+			require.NoError(t, err)
+			require.Empty(t, resp.GetObjects())
+			require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
+
+			srv := NewMockStreamServer(ctx)
+			err = s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				User:                 "user:tyler",
+				Relation:             "viewer",
+				Type:                 "document",
+			}, srv)
+			require.NoError(t, err)
+			require.Equal(t, []string{WarningDeadlineExceeded}, srv.trailer.Get(WarningHeader))
+		}
+	})
+
+	t.Run("datastore_deadline_return_no_error_and_warning", func(t *testing.T) {
+		transport := &recordingTransport{}
+		s := MustNewServerWithOpts(
+			WithDatastore(&deadlineDatastore{ds}),
+			WithTransport(transport),
+			WithListObjectsPipelineEnabled(false),
+		)
+		t.Cleanup(s.Close)
+
+		resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, WarningDeadlineExceeded, transport.header(WarningHeader))
+
+		srv := NewMockStreamServer(ctx)
+		err = s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
+		}, srv)
+		require.NoError(t, err)
+		require.Equal(t, []string{WarningDeadlineExceeded}, srv.trailer.Get(WarningHeader))
+	})
+
+	t.Run("no_warning_when_deadline_is_not_exceeded", func(t *testing.T) {
+		for _, pipelineEnabled := range []bool{false, true} {
+			transport := &recordingTransport{}
+			s := MustNewServerWithOpts(
+				WithDatastore(ds),
+				WithTransport(transport),
+				WithExperimentals(serverconfig.ExperimentalPipelineListObjects),
+				WithListObjectsPipelineEnabled(pipelineEnabled),
+			)
+			t.Cleanup(s.Close)
+
+			resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				User:                 "user:tyler",
+				Relation:             "viewer",
+				Type:                 "document",
+			})
+			require.NoError(t, err)
+			require.ElementsMatch(t, []string{"document:1", "document:2"}, resp.GetObjects())
+			require.Empty(t, transport.header(WarningHeader))
+
+			srv := NewMockStreamServer(ctx)
+			err = s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				User:                 "user:tyler",
+				Relation:             "viewer",
+				Type:                 "document",
+			}, srv)
+			require.NoError(t, err)
+			require.Empty(t, srv.trailer.Get(WarningHeader))
+		}
 	})
 }
 
