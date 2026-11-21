@@ -116,7 +116,10 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 			if err != nil {
 				fmt.Printf("no models in store %s \n", store.GetId())
 			}
-
+			var latestModelID string
+			if latestModel != nil {
+				latestModelID = latestModel.GetId()
+			}
 			continuationTokenModels := ""
 
 			for {
@@ -136,7 +139,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 					validationResult := validationResult{
 						StoreID:       store.GetId(),
 						ModelID:       model.GetId(),
-						IsLatestModel: model.GetId() == latestModel.GetId(),
+						IsLatestModel:  model.GetId() == latestModelID,
 					}
 
 					if err != nil {
