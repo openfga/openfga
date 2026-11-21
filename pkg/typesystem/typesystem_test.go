@@ -3,6 +3,7 @@ package typesystem
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -903,6 +904,63 @@ func TestHasEntrypoints(t *testing.T) {
 				inputRelation: "d",
 				expectDetails: &relationDetails{true, false},
 			},
+			`computed_relation_to_intersection_of_computed_and_ttu_has_entrypoints`: {
+				model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define parent: [folder]
+						define member: [user]
+						define owner: member
+						define both: owner and owner from parent
+						define alias: both
+			`,
+				inputType:     "folder",
+				inputRelation: "alias",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_to_intersection_of_ttu_and_computed_has_entrypoints`: {
+				model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define parent: [folder]
+						define member: [user]
+						define owner: member
+						define both: owner from parent and owner
+						define alias: both
+			`,
+				inputType:     "folder",
+				inputRelation: "alias",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_to_difference_of_computed_and_ttu_has_entrypoints`: {
+				model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define parent: [folder]
+						define member: [user]
+						define owner: member
+						define both: owner but not owner from parent
+						define alias: both
+			`,
+				inputType:     "folder",
+				inputRelation: "alias",
+				expectDetails: &relationDetails{true, false},
+			},
 		}
 
 		for name, test := range tests {
@@ -910,46 +968,35 @@ func TestHasEntrypoints(t *testing.T) {
 				model := testutils.MustTransformDSLToProtoWithID(test.model)
 				ts, err := New(model)
 				require.NoError(t, err)
-				inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
 
-				rewrite := inputRelation.GetRewrite()
-				hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
+				var hasEntrypoints, hasLoop bool
+				reached, err := entrypoints(ts.GetAllRelations())
+				if err == nil {
+					_, hasEntrypoints = reached[tuple.ToObjectRelationString(test.inputType, test.inputRelation)]
+					if !hasEntrypoints {
+						hasLoop, err = entrypointLoop(ts.GetAllRelations(), reached, test.inputType, test.inputRelation)
+					}
+				}
 
 				if test.expectError != "" {
 					require.ErrorContains(t, err, test.expectError)
 				} else {
 					require.NoError(t, err)
 					require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints, "unexpected value for hasEntrypoints")
-					require.Equal(t, test.expectDetails.hasLoop, hasCycle, "unexpected value for hasLoop")
+					require.Equal(t, test.expectDetails.hasLoop, hasLoop, "unexpected value for hasLoop")
 				}
 			})
 		}
 	})
 	t.Run("invalid_rw", func(t *testing.T) {
-		modelString := `
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define a: [user]
-						define b: a
-						define c: a
-						define d: b and c
-			`
-		model := testutils.MustTransformDSLToProtoWithID(modelString)
-		ts, err := New(model)
-		require.NoError(t, err)
 		var internalError serverErrors.InternalError
 
 		t.Run("nil_rewrite", func(t *testing.T) {
-			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", nil, map[string]map[string]bool{})
+			_, err := entrypoints(map[string]map[string]*openfgav1.Relation{"document": {"d": {Name: "d"}}})
 			require.ErrorAs(t, err, &internalError)
 		})
 		t.Run("bad_rewrite", func(t *testing.T) {
-			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", &openfgav1.Userset{}, map[string]map[string]bool{})
+			_, err := entrypoints(map[string]map[string]*openfgav1.Relation{"document": {"d": {Name: "d", Rewrite: &openfgav1.Userset{}}}})
 			require.ErrorAs(t, err, &internalError)
 		})
 	})
@@ -1080,10 +1127,7 @@ func TestHasEntrypoints(t *testing.T) {
 				ts, err := New(test.model)
 				require.NoError(t, err)
 
-				inputRelation, _ := ts.GetRelation("document", "viewer")
-				rewrite := inputRelation.GetRewrite()
-
-				_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "viewer", rewrite, map[string]map[string]bool{})
+				_, err = entrypoints(ts.GetAllRelations())
 				require.ErrorIs(t, err, ErrInvalidRelation)
 			})
 		}
@@ -1492,7 +1536,7 @@ func TestNewAndValidate(t *testing.T) {
 			expectedError: ErrNoEntrypoints,
 		},
 		{
-			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
+			// "folder#editor" is undefined, so "editor from parent" fails before entrypoints are checked.
 			// Replaced by computed_relation_has_no_entrypoints
 			name: "no_entrypoint_4",
 			model: `
@@ -1510,7 +1554,7 @@ func TestNewAndValidate(t *testing.T) {
 						define parent: [folder]
 						define editor: viewer
 						define viewer: editor from parent`,
-			expectedError: ErrNoEntrypoints,
+			expectedError: ErrRelationUndefined,
 		},
 		{
 			// TODO remove - same as difference_has_entrypoints_and_no_cycle_2
@@ -1547,6 +1591,42 @@ func TestNewAndValidate(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			_, err := NewAndValidate(context.Background(), model)
+			require.ErrorIs(t, err, test.expectedError)
+		})
+	}
+}
+
+// TestNewAndValidateSharedSubgraphs times out when entrypoint validation expands a shared subgraph once per path.
+func TestNewAndValidateSharedSubgraphs(t *testing.T) {
+	const depth = 64
+	tests := map[string]struct {
+		base          []string
+		step          string
+		expectedError error
+	}{
+		`intersection_with_entrypoint`: {
+			base: []string{"r0: [user]", "base: [user]"},
+			step: "(r%[1]d from parent and r%[1]d from parent) or base",
+		},
+		`union_without_entrypoint`: {
+			base:          []string{"r0: [folder#r0]", fmt.Sprintf("a: r%d", depth)},
+			step:          "r%[1]d from parent or r%[1]d from parent",
+			expectedError: ErrNoEntrypoints,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var dsl strings.Builder
+			dsl.WriteString("model\n  schema 1.1\ntype user\ntype folder\n  relations\n    define parent: [folder]\n")
+			for _, relation := range test.base {
+				fmt.Fprintf(&dsl, "    define %s\n", relation)
+			}
+			for level := 1; level <= depth; level++ {
+				fmt.Fprintf(&dsl, "    define r%d: %s\n", level, fmt.Sprintf(test.step, level-1))
+			}
+
+			_, err := NewAndValidate(context.Background(), testutils.MustTransformDSLToProtoWithID(dsl.String()))
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}

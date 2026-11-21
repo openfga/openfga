@@ -972,176 +972,148 @@ func (t *TypeSystem) relationInvolves(objectType, relation string, visited map[s
 	return false, nil
 }
 
-// hasEntrypoints recursively walks the rewrite definition for the given relation to determine if there is at least
-// one path in the rewrite rule that could relate to at least one concrete object type. If there is no such path that
-// could lead to at least one relationship with some object type, then false is returned along with an error indicating
-// no entrypoints were found. If at least one relationship with a specific object type is found while walking the rewrite,
-// then true is returned along with a nil error.
-// This function assumes that all other model validations have run.
-func hasEntrypoints(
-	typedefs map[string]map[string]*openfgav1.Relation,
-	typeName, relationName string,
-	rewrite *openfgav1.Userset,
-	visitedRelations map[string]map[string]bool,
-) (bool, bool, error) {
-	v := maps.Clone(visitedRelations)
+// entrypoints returns the object#relation keys that relate to at least one concrete object type, as the least fixpoint of rewriteHasEntrypoint.
+func entrypoints(typedefs map[string]map[string]*openfgav1.Relation) (map[string]struct{}, error) {
+	reached := make(map[string]struct{})
+	// A false evaluation stays false until a relation it consulted gains an entrypoint, so only those wake it.
+	waiting := make(map[string][]string)
+	var pending []string
 
-	// Presence of a key represents that we've visited that object and relation. We keep track of this to avoid stack overflows.
-	// The value of the key represents hasEntrypoints for that relation. We set this to true only when the relation is directly assignable.
-	if val, ok := v[typeName]; ok {
-		val[relationName] = false
-	} else {
-		v[typeName] = map[string]bool{
-			relationName: false,
+	evaluate := func(key string) error {
+		typeName, relationName := tuple.SplitObjectRelation(key)
+		var consulted []string
+		hasEntrypoint, err := rewriteHasEntrypoint(typedefs, typeName, relationName, typedefs[typeName][relationName].GetRewrite(), func(dependency string) bool {
+			_, ok := reached[dependency]
+			if !ok {
+				consulted = append(consulted, dependency)
+			}
+			return ok
+		})
+		if err != nil {
+			return err
+		}
+
+		if hasEntrypoint {
+			reached[key] = struct{}{}
+			pending = append(pending, key)
+			return nil
+		}
+
+		for _, dependency := range consulted {
+			waiting[dependency] = append(waiting[dependency], key)
+		}
+		return nil
+	}
+
+	// Range over the type definitions and relations in sorted order so the first error is deterministic.
+	for _, typeName := range slices.Sorted(maps.Keys(typedefs)) {
+		for _, relationName := range slices.Sorted(maps.Keys(typedefs[typeName])) {
+			if err := evaluate(tuple.ToObjectRelationString(typeName, relationName)); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	relation, ok := typedefs[typeName][relationName]
-	if !ok {
-		return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, relationName)
+	for len(pending) > 0 {
+		key := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+
+		for _, dependent := range waiting[key] {
+			if _, ok := reached[dependent]; ok {
+				continue
+			}
+			if err := evaluate(dependent); err != nil {
+				return nil, err
+			}
+		}
+		delete(waiting, key)
 	}
 
+	return reached, nil
+}
+
+// rewriteHasEntrypoint reports whether rewrite, defined on typeName#relationName, has an entrypoint given the object#relation keys for which reached is true.
+func rewriteHasEntrypoint(
+	typedefs map[string]map[string]*openfgav1.Relation,
+	typeName, relationName string,
+	rewrite *openfgav1.Userset,
+	reached func(objectRelation string) bool,
+) (bool, error) {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		// At least one type must have an entrypoint.
-		for _, assignableType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+		for _, assignableType := range typedefs[typeName][relationName].GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
-				v[typeName][relationName] = true
-				return true, false, nil
+				return true, nil
 			}
 
 			assignableTypeName := assignableType.GetType()
 			assignableRelationName := assignableType.GetRelation()
 
-			assignableRelation, ok := typedefs[assignableTypeName][assignableRelationName]
-			if !ok {
-				return false, false, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, assignableRelationName)
+			if _, ok := typedefs[assignableTypeName][assignableRelationName]; !ok {
+				return false, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, assignableRelationName)
 			}
 
-			if _, ok := v[assignableTypeName][assignableRelationName]; ok {
-				continue
-			}
-
-			hasEntrypoint, _, err := hasEntrypoints(typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
-			if err != nil {
-				return false, false, err
-			}
-
-			if hasEntrypoint {
-				return true, false, nil
+			if reached(tuple.ToObjectRelationString(assignableTypeName, assignableRelationName)) {
+				return true, nil
 			}
 		}
 
-		return false, false, nil
+		return false, nil
 	case *openfgav1.Userset_ComputedUserset:
-
 		computedRelationName := rw.ComputedUserset.GetRelation()
-		computedRelation, ok := typedefs[typeName][computedRelationName]
-		if !ok {
-			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
+		if _, ok := typedefs[typeName][computedRelationName]; !ok {
+			return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
 		}
 
-		if hasEntrypoint, ok := v[typeName][computedRelationName]; ok {
-			return hasEntrypoint, true, nil
-		}
-
-		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
-		if err != nil {
-			return false, false, err
-		}
-
-		return hasEntrypoint, loop, nil
+		return reached(tuple.ToObjectRelationString(typeName, computedRelationName)), nil
 	case *openfgav1.Userset_TupleToUserset:
 		tuplesetRelationName := rw.TupleToUserset.GetTupleset().GetRelation()
 		computedRelationName := rw.TupleToUserset.GetComputedUserset().GetRelation()
 
 		tuplesetRelation, ok := typedefs[typeName][tuplesetRelationName]
 		if !ok {
-			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, tuplesetRelationName)
+			return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, tuplesetRelationName)
 		}
 
-		// At least one type must have an entrypoint.
 		for _, assignableType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			assignableTypeName := assignableType.GetType()
-
-			if assignableRelation, ok := typedefs[assignableTypeName][computedRelationName]; ok {
-				if hasEntrypoint, ok := v[assignableTypeName][computedRelationName]; ok {
-					if hasEntrypoint {
-						return true, false, nil
-					}
-					continue
-				}
-
-				hasEntrypoint, _, err := hasEntrypoints(typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
-				if err != nil {
-					return false, false, err
-				}
-
-				if hasEntrypoint {
-					return true, false, nil
-				}
+			if _, ok := typedefs[assignableTypeName][computedRelationName]; ok && reached(tuple.ToObjectRelationString(assignableTypeName, computedRelationName)) {
+				return true, nil
 			}
 		}
 
-		return false, false, nil
-
+		return false, nil
 	case *openfgav1.Userset_Union:
-		// At least one type must have an entrypoint.
-		loop := false
 		if len(rw.Union.GetChild()) < 2 {
-			return false, false, fmt.Errorf("%w: '%s#%s' as union has less than 2 children", ErrInvalidRelation, typeName, relationName)
+			return false, fmt.Errorf("%w: '%s#%s' as union has less than 2 children", ErrInvalidRelation, typeName, relationName)
 		}
 		for _, child := range rw.Union.GetChild() {
-			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
-			if err != nil {
-				return false, false, err
+			hasEntrypoint, err := rewriteHasEntrypoint(typedefs, typeName, relationName, child, reached)
+			if err != nil || hasEntrypoint {
+				return hasEntrypoint, err
 			}
-
-			if hasEntrypoints {
-				return true, false, nil
-			}
-			loop = loop || childLoop
 		}
 
-		return false, loop, nil
+		return false, nil
 	case *openfgav1.Userset_Intersection:
 		if len(rw.Intersection.GetChild()) < 2 {
-			return false, false, fmt.Errorf("%w: '%s#%s' as intersection has less than 2 children", ErrInvalidRelation, typeName, relationName)
+			return false, fmt.Errorf("%w: '%s#%s' as intersection has less than 2 children", ErrInvalidRelation, typeName, relationName)
 		}
 		for _, child := range rw.Intersection.GetChild() {
-			// All the children must have an entrypoint.
-			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
-			if err != nil {
-				return false, false, err
-			}
-
-			if !hasEntrypoints {
-				return false, childLoop, nil
+			hasEntrypoint, err := rewriteHasEntrypoint(typedefs, typeName, relationName, child, reached)
+			if err != nil || !hasEntrypoint {
+				return false, err
 			}
 		}
 
-		return true, false, nil
+		return true, nil
 	case *openfgav1.Userset_Difference:
-		// All the children must have an entrypoint.
-		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), visitedRelations)
-		if err != nil {
-			return false, false, err
+		hasEntrypoint, err := rewriteHasEntrypoint(typedefs, typeName, relationName, rw.Difference.GetBase(), reached)
+		if err != nil || !hasEntrypoint {
+			return false, err
 		}
 
-		if !hasEntrypoint {
-			return false, loop, nil
-		}
-
-		hasEntrypoint, loop, err = hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetSubtract(), visitedRelations)
-		if err != nil {
-			return false, false, err
-		}
-
-		if !hasEntrypoint {
-			return false, loop, nil
-		}
-
-		return true, false, nil
+		return rewriteHasEntrypoint(typedefs, typeName, relationName, rw.Difference.GetSubtract(), reached)
 	}
 
 	// This should never happen because rewrite.GetUserset().(type) returns an unknown type (or it itself is nil).
@@ -1150,7 +1122,50 @@ func hasEntrypoints(
 		rwString = rewrite.String()
 	}
 
-	return false, false, serverErrors.HandleError("error validating model", fmt.Errorf("hasEntrypoints unknown rewrite %s for '%s#%s'", rwString, typeName, relationName))
+	return false, serverErrors.HandleError("error validating model", fmt.Errorf("unknown rewrite %s for '%s#%s'", rwString, typeName, relationName))
+}
+
+// entrypointLoop reports whether typeName#relationName reaches a cycle through computed relations, set operands included, that lack an entrypoint.
+func entrypointLoop(typedefs map[string]map[string]*openfgav1.Relation, reached map[string]struct{}, typeName, relationName string) (bool, error) {
+	// True while the relation is on the walk, false once it is fully explored.
+	onWalk := make(map[string]bool)
+
+	var walk func(relationName string) (bool, error)
+	walk = func(relationName string) (bool, error) {
+		if _, ok := reached[tuple.ToObjectRelationString(typeName, relationName)]; ok {
+			return false, nil
+		}
+		if active, seen := onWalk[relationName]; seen {
+			return active, nil
+		}
+
+		relation, ok := typedefs[typeName][relationName]
+		if !ok {
+			return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, relationName)
+		}
+
+		var computed []string
+		if _, err := WalkUsersetRewrite(relation.GetRewrite(), func(rewrite *openfgav1.Userset) interface{} {
+			if computedUserset, ok := rewrite.GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
+				computed = append(computed, computedUserset.ComputedUserset.GetRelation())
+			}
+			return nil
+		}); err != nil {
+			return false, err
+		}
+
+		onWalk[relationName] = true
+		for _, next := range computed {
+			if loop, err := walk(next); err != nil || loop {
+				return loop, err
+			}
+		}
+		onWalk[relationName] = false
+
+		return false, nil
+	}
+
+	return walk(relationName)
 }
 
 // NewAndValidate is like New but also validates the model according to the following rules:
@@ -1197,9 +1212,10 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		typeNames = append(typeNames, typeName)
 	}
 
-	// Range over the type definitions in sorted order to produce a deterministic outcome.
+	// Range over the type definitions and relations in sorted order to produce a deterministic outcome.
 	sort.Strings(typeNames)
 
+	var relationKeys []string
 	for _, typeName := range typeNames {
 		typedef := typedefsMap[typeName]
 
@@ -1209,14 +1225,25 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 			relationNames = append(relationNames, relationName)
 		}
 
-		// Range over the relations in sorted order to produce a deterministic outcome.
 		sort.Strings(relationNames)
 
 		for _, relationName := range relationNames {
-			err := t.validateRelation(typeName, relationName, relationMap)
-			if err != nil {
+			if err := t.validateRelationDefinition(typeName, relationName, relationMap[relationName]); err != nil {
 				return nil, err
 			}
+			relationKeys = append(relationKeys, tuple.ToObjectRelationString(typeName, relationName))
+		}
+	}
+
+	reached, err := entrypoints(t.relations)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, relationKey := range relationKeys {
+		typeName, relationName := tuple.SplitObjectRelation(relationKey)
+		if err := t.validateRelationEntrypoints(typeName, relationName, reached); err != nil {
+			return nil, err
 		}
 	}
 
@@ -1232,30 +1259,23 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	return t, nil
 }
 
-// validateRelation applies all the validation rules to a relation definition in a model. A relation
-// must meet all the rewrite validation, type restriction validation, and entrypoint validation criteria
-// for it to be valid. Otherwise, an error is returned.
-func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap map[string]*openfgav1.Userset) error {
-	rewrite := relationMap[relationName]
-
-	err := t.isUsersetRewriteValid(typeName, relationName, rewrite)
-	if err != nil {
+// validateRelationDefinition checks a relation's rewrite and type restrictions.
+func (t *TypeSystem) validateRelationDefinition(typeName, relationName string, rewrite *openfgav1.Userset) error {
+	if err := t.isUsersetRewriteValid(typeName, relationName, rewrite); err != nil {
 		return err
 	}
 
-	err = t.validateTypeRestrictions(typeName, relationName)
-	if err != nil {
-		return err
-	}
+	return t.validateTypeRestrictions(typeName, relationName)
+}
 
-	visitedRelations := map[string]map[string]bool{}
+// validateRelationEntrypoints checks that a relation is among the reached relations and has no cycle.
+func (t *TypeSystem) validateRelationEntrypoints(typeName, relationName string, reached map[string]struct{}) error {
+	if _, ok := reached[tuple.ToObjectRelationString(typeName, relationName)]; !ok {
+		loop, err := entrypointLoop(t.relations, reached, typeName, relationName)
+		if err != nil {
+			return err
+		}
 
-	hasEntrypoints, loop, err := hasEntrypoints(t.relations, typeName, relationName, rewrite, visitedRelations)
-	if err != nil {
-		return err
-	}
-
-	if !hasEntrypoints {
 		cause := ErrNoEntrypoints
 		if loop {
 			cause = ErrNoEntryPointsLoop
