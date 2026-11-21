@@ -451,6 +451,54 @@ func TestWriteCommand(t *testing.T) {
 			expectedResponse: &openfgav1.WriteResponse{},
 		},
 		{
+			name:    "delete_failure_with_invalid_object",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "invalid",
+					Relation: "viewer",
+					User:     "user:1",
+				}},
+			},
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'invalid#viewer@user:1'. Reason: the 'object' field is malformed",
+		},
+		{
+			name:    "delete_failure_with_empty_object",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "",
+					Relation: "viewer",
+					User:     "user:1",
+				}},
+			},
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple '#viewer@user:1'. Reason: the 'object' field is malformed",
+		},
+		{
+			name:    "delete_failure_with_invalid_relation",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "document:1",
+					Relation: "",
+					User:     "user:1",
+				}},
+			},
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#@user:1'. Reason: the 'relation' field is malformed",
+		},
+		{
+			name:    "delete_failure_with_relation_containing_special_chars",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "document:1",
+					Relation: "view#er",
+					User:     "user:1",
+				}},
+			},
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#view#er@user:1'. Reason: the 'relation' field is malformed",
+		},
+		{
 			name:    "delete_failure_with_invalid_user",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {},
 			deletes: &openfgav1.WriteRequestDeletes{
