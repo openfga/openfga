@@ -38,6 +38,16 @@ exporters:
   # Data sources: metrics
   prometheus:
     endpoint: otel-collector:2113
+  # Data sources: logs
+  # The core `otlphttp` exporter appends /v1/logs, so this targets
+  # Loki's native OTLP endpoint at http://loki:3100/otlp/v1/logs.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+  # Data sources: logs
+  debug:
+    verbosity: detailed
 
 processors:
   # Data sources: traces, metrics, logs
@@ -60,3 +70,7 @@ service:
       receivers: [prometheus]
       processors: [batch]
       exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug, otlphttp/loki]
