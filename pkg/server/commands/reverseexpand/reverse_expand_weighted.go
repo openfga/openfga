@@ -695,7 +695,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	// when the intersection node has a weight to the sourceUserType then it means all the group edges has weight to the sourceUserType
 	intersectionEdges, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
-		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
+		return fmt.Errorf("%w: operation: intersection: %w", ErrLowestWeightFail, err)
 	}
 
 	// note that we should never see a case where no edges to call LO
@@ -716,7 +716,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		userset, err := c.typesystem.ConstructUserset(intersectEdge, sourceUserType)
 		if err != nil {
 			// this should never happen
-			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
+			return fmt.Errorf("%w: operation: intersection: %w", ErrConstructUsersetFail, err)
 		}
 		usersets = append(usersets, userset)
 		var intersectRelation string
@@ -772,7 +772,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 
 	edges, err := typesystem.GetEdgesForExclusion(exclusionEdges, sourceUserType)
 	if err != nil {
-		return fmt.Errorf("%w: operation: exclusion: %s", ErrLowestWeightFail, err.Error())
+		return fmt.Errorf("%w: operation: exclusion: %w", ErrLowestWeightFail, err)
 	}
 
 	// This means the exclusion edge does not have a path to the terminal type.
@@ -780,7 +780,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	if edges.ExcludedEdge == nil {
 		baseEdges, err := c.typesystem.GetInternalEdges(edges.BaseEdge, sourceUserType)
 		if err != nil {
-			return fmt.Errorf("%w: operation: exclusion: failed to get base edges: %s", ErrLowestWeightFail, err.Error())
+			return fmt.Errorf("%w: operation: exclusion: failed to get base edges: %w", ErrLowestWeightFail, err)
 		}
 
 		newReq := req.clone()
@@ -801,7 +801,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdge, sourceUserType)
 	if err != nil {
 		// This should never happen.
-		return fmt.Errorf("%w: operation: exclusion: %s", ErrConstructUsersetFail, err.Error())
+		return fmt.Errorf("%w: operation: exclusion: %w", ErrConstructUsersetFail, err)
 	}
 
 	// Concurrently find candidates and call check on them as they are found
