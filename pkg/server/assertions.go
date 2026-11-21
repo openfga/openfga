@@ -20,7 +20,7 @@ import (
 )
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.WriteAssertions.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.WriteAssertions.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -65,7 +65,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertionsRequest) (*openfgav1.ReadAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.ReadAssertions.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.ReadAssertions.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()

@@ -19,7 +19,7 @@ import (
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
 	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, apimethod.Expand.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.Expand.String(), trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},

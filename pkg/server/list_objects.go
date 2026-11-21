@@ -35,7 +35,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	targetObjectType := req.GetType()
 	storeID := req.GetStoreId()
 
-	ctx, span := tracer.Start(ctx, apimethod.ListObjects.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.ListObjects.String(), trace.WithAttributes(
 		attribute.String("store_id", storeID),
 		attribute.String("object_type", targetObjectType),
 		attribute.String("relation", req.GetRelation()),
@@ -216,7 +216,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	ctx := srv.Context()
 	storeID := req.GetStoreId()
 
-	ctx, span := tracer.Start(ctx, apimethod.StreamedListObjects.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.StreamedListObjects.String(), trace.WithAttributes(
 		attribute.String("store_id", storeID),
 		attribute.String("object_type", req.GetType()),
 		attribute.String("relation", req.GetRelation()),
@@ -354,6 +354,7 @@ func (s *Server) getListObjectsCheckResolverBuilder(storeID string) *graph.Check
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, storeID)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithTracerProvider(s.tracerProvider),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
