@@ -2066,6 +2066,102 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrReservedKeywords,
 		},
 		{
+			name: "Fails_If_Condition_Name_Is_Empty",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type:      "user",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"": {
+						Name:       "",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			err: ErrInvalidModel,
+		},
+		{
+			name: "Fails_If_Condition_Name_Is_Self",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type:      "user",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"self": {
+						Name:       "self",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Condition_Name_Is_This",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type:      "user",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"this": {
+						Name:       "this",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Condition_Name_Is_Dollar_Expression",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type:      "user",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"$expression": {
+						Name:       "$expression",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			err: ErrInvalidModel,
+		},
+		{
 			name: "Fails_If_Auth_Model_1.1_Has_A_Cycle_And_Only_One_Type",
 			model: &openfgav1.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
