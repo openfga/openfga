@@ -44,6 +44,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		}
 	}
 
+	for _, item := range req.GetChecks() {
+		if err := s.checkContextualTupleCount(len(item.GetContextualTuples().GetTupleKeys())); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"check item %q: %s", item.GetCorrelationId(), err.Error())
+		}
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  apimethod.BatchCheck.String(),

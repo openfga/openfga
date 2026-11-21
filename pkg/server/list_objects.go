@@ -50,6 +50,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		}
 	}
 
+	if err := s.checkContextualTupleCount(len(req.GetContextualTuples().GetTupleKeys())); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	// TODO: This should be apimethod.ListObjects, but is it considered a breaking change to move?
 	const methodName = "listobjects"
 
@@ -229,6 +233,10 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		if err := req.Validate(); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
+	}
+
+	if err := s.checkContextualTupleCount(len(req.GetContextualTuples().GetTupleKeys())); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// TODO: This should be apimethod.StreamedListObjects, but is it considered a breaking change to move?

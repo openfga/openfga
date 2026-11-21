@@ -12,6 +12,8 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -1122,4 +1124,66 @@ func TestLogBatchCheckBreakingChanges_MemoizesAcrossDistinctIDs(t *testing.T) {
 		"self-1": v2breaking.ReasonComputedUsersetSelfObj,
 		"self-2": v2breaking.ReasonComputedUsersetSelfObj,
 	}, byID)
+}
+
+func TestBatchCheck_ContextualTupleLimit(t *testing.T) {
+	ctx := context.Background()
+	testServer := &Server{
+		maxContextualTuples: 2,
+		featureFlagClient:   featureflags.NewNoopFeatureFlagClient(),
+	}
+	storeID := "01K3RZVNE3NJ4FYKK99QN013G2"
+
+	t.Run("single_item_exceeds_limit", func(t *testing.T) {
+		_, err := testServer.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+			StoreId: storeID,
+			Checks: []*openfgav1.BatchCheckItem{
+				{
+					CorrelationId: "c1",
+					TupleKey:      tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:alice"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							tuple.NewTupleKey("document:1", "viewer", "user:b"),
+							tuple.NewTupleKey("document:1", "viewer", "user:c"),
+							tuple.NewTupleKey("document:1", "viewer", "user:d"),
+						},
+					},
+				},
+			},
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Contains(t, status.Convert(err).Message(), "exceeds server limit")
+		require.Contains(t, status.Convert(err).Message(), "c1")
+	})
+
+	t.Run("multiple_items_one_exceeds", func(t *testing.T) {
+		_, err := testServer.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+			StoreId: storeID,
+			Checks: []*openfgav1.BatchCheckItem{
+				{
+					CorrelationId: "ok",
+					TupleKey:      tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:alice"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							tuple.NewTupleKey("document:1", "viewer", "user:b"),
+						},
+					},
+				},
+				{
+					CorrelationId: "bad",
+					TupleKey:      tuple.NewCheckRequestTupleKey("document:2", "viewer", "user:alice"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							tuple.NewTupleKey("document:2", "viewer", "user:b"),
+							tuple.NewTupleKey("document:2", "viewer", "user:c"),
+							tuple.NewTupleKey("document:2", "viewer", "user:d"),
+						},
+					},
+				},
+			},
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Contains(t, status.Convert(err).Message(), "exceeds server limit")
+		require.Contains(t, status.Convert(err).Message(), "bad")
+	})
 }

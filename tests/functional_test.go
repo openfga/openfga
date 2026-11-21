@@ -3,6 +3,8 @@ package tests
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,6 +99,51 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 	require.Equal(t, codes.ResourceExhausted, s.Code())
 	require.ErrorContains(t, err, "grpc: received message larger than max")
 	require.Nil(t, checkResp)
+}
+
+func TestHTTPMaxBodySize(t *testing.T) {
+	cfg := testutils.MustDefaultConfig()
+	cfg.Log.Level = "error"
+	cfg.Datastore.Engine = "memory"
+	cfg.HTTP.Enabled = true
+	cfg.GRPC.MaxRecvMsgBytes = 512
+
+	StartServer(t, cfg)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+
+	httpURL := "http://" + cfg.HTTP.Addr
+
+	// oversizedBody returns a valid JSON reader whose byte length exceeds MaxRecvMsgBytes,
+	// forcing the JSON decoder to read past the limit so MaxBytesReader can trigger.
+	oversizedBody := func() *strings.Reader {
+		return strings.NewReader(`{"name":"` + strings.Repeat("x", cfg.GRPC.MaxRecvMsgBytes) + `"}`)
+	}
+
+	t.Run("body_within_limit_passes_through", func(t *testing.T) {
+		resp, err := http.Post(httpURL+"/stores", "application/json", strings.NewReader(`{"name":"test-store"}`))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.NotEqual(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	})
+
+	t.Run("content_length_exceeding_limit_returns_413", func(t *testing.T) {
+		resp, err := http.Post(httpURL+"/stores", "application/json", oversizedBody())
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	})
+
+	t.Run("chunked_body_exceeding_limit_returns_413", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodPost, httpURL+"/stores", oversizedBody())
+		require.NoError(t, err)
+		req.ContentLength = -1 // suppress Content-Length, forcing chunked transfer encoding
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	})
 }
 
 // TODO make a unit test from this.

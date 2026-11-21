@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -73,4 +74,40 @@ func TestCustomHTTPErrorHandlerSpecialEncoding(t *testing.T) {
 
 	expectedData := "{\"code\":\"assertions_too_many_items\",\"message\":\"invalid character '<' looking for beginning of value,\"}"
 	require.Equal(t, expectedData, strings.TrimSpace(string(data)))
+}
+
+func TestMaxBytesMiddleware(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("body_within_limit_passes_through", func(t *testing.T) {
+		handler := MaxBytesMiddleware(100, next)
+		body := strings.NewReader("hello")
+		req := httptest.NewRequest(http.MethodPost, "/", body)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("body_exceeding_limit_returns_413", func(t *testing.T) {
+		const limit = 10
+		handler := MaxBytesMiddleware(limit, next)
+		body := bytes.NewReader(bytes.Repeat([]byte("x"), limit+1))
+		req := httptest.NewRequest(http.MethodPost, "/", body)
+		req.ContentLength = int64(limit + 1)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	})
+
+	t.Run("content_length_exceeding_limit_returns_413_without_reading_body", func(t *testing.T) {
+		const limit = 10
+		handler := MaxBytesMiddleware(limit, next)
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req.ContentLength = int64(limit + 1)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	})
 }
