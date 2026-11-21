@@ -11,6 +11,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"go.uber.org/zap"
+
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -81,7 +83,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		)
 	}
 
-	_, err := typesystem.NewAndValidate(ctx, model)
+	typesys, err := typesystem.NewAndValidate(ctx, model)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
@@ -90,6 +92,23 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	if err != nil {
 		return nil, serverErrors.
 			HandleError("Error writing authorization model configuration", err)
+	}
+
+	// The model passed validation and was persisted, but the weighted
+	// authorization-model graph can still fail to build (e.g., a TTU whose
+	// computed relation is missing on one of the tupleset's directly
+	// related types). In that case every weighted-graph-gated evaluation
+	// path silently falls back to the default Check evaluator for the whole
+	// model. Surface the failure here, after the write succeeded, so an
+	// operator sees the strategy change when the model is deployed rather
+	// than only inferring it from degraded performance later, and so a
+	// failed write is never reported as accepted. See
+	// typesystem.WeightedGraphBuildError (issue #3306).
+	if buildErr := typesys.WeightedGraphBuildError(); buildErr != nil {
+		w.logger.WarnWithContext(ctx, "authorization model accepted, but the weighted graph failed to build; all relations fall back to the default Check evaluator",
+			zap.String("authorization_model_id", model.GetId()),
+			zap.Error(buildErr),
+		)
 	}
 
 	return &openfgav1.WriteAuthorizationModelResponse{
