@@ -348,47 +348,31 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
 		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
-		wg.Wait() // just to make sure to avoid test leaks
+		// Cancel only after the reducer has resolved: a concurrent cancel races
+		// the reducer's select between handler outcomes and ctx.Done() (#3197).
+		cancel()
 	})
 
 	t.Run("return_allowed:false_if_sub_handler_evaluated_before_context_cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
 		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
-		wg.Wait() // just to make sure to avoid test leaks
+		// Cancel only after the reducer has resolved: a concurrent cancel races
+		// the reducer's select between handler outcomes and ctx.Done() (#3197).
+		cancel()
 	})
 
 	t.Run("return_allowed:false_if_sub_handler_evaluated_before_base_cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
-
-		var wg sync.WaitGroup
 
 		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
@@ -398,38 +382,15 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 			}, nil
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
+		// The sub handler resolves immediately and short-circuits the reducer
+		// while the base handler is still in flight; the in-flight base is torn
+		// down by the reducer's internal cancel. Cancelling the external context
+		// concurrently would race the reducer's select instead (#3197).
 		resp, err := exclusion(ctx, concurrencyLimit, slowTrueHandler, trueHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
-		wg.Wait() // just to make sure to avoid test leaks
-	})
-
-	t.Run("return_allowed:false_if_subtract_handler_evaluated_before_context_cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-
-		wg.Wait() // just to make sure to avoid test leaks
+		cancel()
 	})
 
 	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
@@ -470,22 +431,30 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
+		// The handlers block until released, and the cancel fires only once a
+		// handler is running, so the reducer deterministically observes the
+		// cancellation before any handler outcome (#3197).
+		var startedOnce sync.Once
+		handlerStarted := make(chan struct{})
+		release := make(chan struct{})
+		blockedHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			startedOnce.Do(func() { close(handlerStarted) })
+			<-release
 			return &ResolveCheckResponse{}, nil
 		}
 
-		resp, err := exclusion(ctx, concurrencyLimit, slowHandler, slowHandler)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-handlerStarted
+			cancel()
+		}()
+
+		resp, err := exclusion(ctx, concurrencyLimit, blockedHandler, blockedHandler)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 
+		close(release)
 		wg.Wait() // just to make sure to avoid test leaks
 	})
 
@@ -760,20 +729,13 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
-		wg.Wait() // just to make sure to avoid test leaks
+		// Cancel only after the reducer has resolved: a concurrent cancel races
+		// the reducer's select between handler outcomes and ctx.Done() (#3197).
+		cancel()
 	})
 
 	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
@@ -807,24 +769,32 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
+		// The handlers block until released, and the cancel fires only once a
+		// handler is running, so the reducer deterministically observes the
+		// cancellation before any handler outcome (#3197).
+		var startedOnce sync.Once
+		handlerStarted := make(chan struct{})
+		release := make(chan struct{})
+		blockedTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			startedOnce.Do(func() { close(handlerStarted) })
+			<-release
 			return &ResolveCheckResponse{
 				Allowed: true,
 			}, nil
 		}
 
-		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler, slowTrueHandler)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-handlerStarted
+			cancel()
+		}()
+
+		resp, err := intersection(ctx, concurrencyLimit, blockedTrueHandler, blockedTrueHandler)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 
+		close(release)
 		wg.Wait() // just to make sure to avoid test leaks
 	})
 
@@ -1720,24 +1690,31 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
+		// The handler blocks until released, and the cancel fires only once the
+		// handler is running, so the reducer deterministically observes the
+		// cancellation before any handler outcome (#3197).
+		handlerStarted := make(chan struct{})
+		release := make(chan struct{})
+		blockedTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			close(handlerStarted)
+			<-release
 			return &ResolveCheckResponse{
 				Allowed: true,
 			}, nil
 		}
 
-		resp, err := union(ctx, concurrencyLimit, slowTrueHandler)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-handlerStarted
+			cancel()
+		}()
+
+		resp, err := union(ctx, concurrencyLimit, blockedTrueHandler)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 
+		close(release)
 		wg.Wait() // just to make sure to avoid test leaks
 	})
 
@@ -1745,19 +1722,13 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
 		resp, err := union(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
-		wg.Wait() // just to make sure to avoid test leaks
+
+		// Cancel only after the reducer has resolved: a concurrent cancel races
+		// the reducer's select between handler outcomes and ctx.Done() (#3197).
+		cancel()
 	})
 
 	t.Run("should_error_if_handler_panics", func(t *testing.T) {
