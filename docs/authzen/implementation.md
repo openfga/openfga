@@ -93,7 +93,7 @@ AuthZen allows `properties` on Subject, Resource, and Action. OpenFGA has no dir
 | `action.properties.severity` | `action_` | `action_severity` |
 | `request.context.current_time` | (none) | `current_time` |
 
-Precedence (lowest to highest): subject properties, resource properties, action properties, request context. Request context wins on conflicts.
+There is no precedence between the sources. If a request context key matches a namespaced property key, `contextConflictError()` rejects the request with `InvalidArgument` (HTTP 400), whatever the values are: `subject.properties.role = "viewer"` together with `context.subject_role = "viewer"` is rejected. The error lists every overlapping key. `mergePropertiesToContext()` runs this check before merging, so every endpoint rejects overlapping keys.
 
 Underscore is used as separator because OpenFGA does not allow condition parameters with `.` in their names.
 
@@ -116,6 +116,8 @@ Flow:
 ### Evaluations (Batch)
 
 Supports three execution modes controlled by `options.evaluations_semantic`.
+
+Before running any check, `validateEvaluationsContext()` resolves the effective subject, resource, action, and context of every item (per-item overrides fall back to top-level defaults) and checks each one for context keys that overlap its namespaced properties. A conflict in any item fails the whole request with `InvalidArgument` (HTTP 400) in all three modes, including items that a short-circuit would never evaluate.
 
 #### Empty evaluations list
 
@@ -228,6 +230,8 @@ All helpers are defined in `authzen.go`:
 | `errorContext()` | Builds the `{error: {status, message}}` JSON struct for error responses |
 | `getAuthorizationModelIDFromHeader()` | Extracts and validates the model ID from gRPC metadata |
 | `mergePropertiesToContext()` | Merges subject/resource/action properties into the OpenFGA context with prefixes |
+| `contextConflictError()` | Returns an error listing request context keys that overlap namespaced property keys |
+| `validateEvaluationsContext()` | Checks every resolved `evaluations` item for context/property conflicts before any check runs |
 
 ## Error Context
 

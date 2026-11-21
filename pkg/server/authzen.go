@@ -31,18 +31,61 @@ type propertiesProvider interface {
 	GetProperties() *structpb.Struct
 }
 
+// contextConflictError returns an error listing every request context key that
+// matches a namespaced subject, resource, or action property key, or nil if
+// there is none. Overlapping keys are rejected even when both values are equal,
+// since neither source can be picked over the other.
+func contextConflictError(
+	requestContext *structpb.Struct,
+	subject propertiesProvider,
+	resource propertiesProvider,
+	action *authzenv1.Action,
+) error {
+	var conflicts []string
+	for key := range requestContext.GetFields() {
+		if hasNamespacedProperty(key, "subject_", subject) ||
+			hasNamespacedProperty(key, "resource_", resource) ||
+			hasNamespacedProperty(key, "action_", action) {
+			conflicts = append(conflicts, key)
+		}
+	}
+
+	if len(conflicts) == 0 {
+		return nil
+	}
+
+	sort.Strings(conflicts)
+	return fmt.Errorf("context keys conflict with subject, resource or action properties: %s", strings.Join(conflicts, ", "))
+}
+
+// hasNamespacedProperty reports whether key is prefix followed by the name of
+// one of the source's properties.
+func hasNamespacedProperty(key, prefix string, source propertiesProvider) bool {
+	name, ok := strings.CutPrefix(key, prefix)
+	if !ok || source == nil {
+		return false
+	}
+
+	_, found := source.GetProperties().GetFields()[name]
+	return found
+}
+
 // mergePropertiesToContext merges subject, resource, and action properties into
 // the context struct. Properties are namespaced with their source prefix using
 // underscore as separator (e.g., "subject_department") because OpenFGA does not
 // allow condition parameters with "." in their names.
-// Precedence (lowest to highest): subject.properties, resource.properties,
-// action.properties, request context (request context wins on conflicts).
+// A request context key that matches one of the namespaced property keys is
+// rejected with an error (see contextConflictError).
 func mergePropertiesToContext(
 	requestContext *structpb.Struct,
 	subject propertiesProvider,
 	resource propertiesProvider,
 	action *authzenv1.Action,
 ) (*structpb.Struct, error) {
+	if err := contextConflictError(requestContext, subject, resource, action); err != nil {
+		return nil, err
+	}
+
 	merged := make(map[string]any)
 
 	if subject != nil && subject.GetProperties() != nil {
@@ -274,6 +317,12 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 		}
 	}
 
+	// Validate every item before running any check, so a conflict fails the whole
+	// request in all semantics, including items a short-circuit would skip.
+	if err := validateEvaluationsContext(req); err != nil {
+		return nil, err
+	}
+
 	if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny ||
 		semantic == authzenv1.EvaluationsSemantic_permit_on_first_permit {
 		return s.evaluateWithShortCircuit(ctx, req, authorizationModelID, semantic), nil
@@ -307,6 +356,19 @@ func resolveEvalFields(
 		evalContext = topContext
 	}
 	return subject, resource, action, evalContext
+}
+
+// validateEvaluationsContext resolves the effective subject, resource, action,
+// and context of every evaluation item and returns an InvalidArgument error if
+// any item's context has a key that overlaps its namespaced properties.
+func validateEvaluationsContext(req *authzenv1.EvaluationsRequest) error {
+	for i, eval := range req.GetEvaluations() {
+		subject, resource, action, evalContext := resolveEvalFields(eval, req.GetSubject(), req.GetResource(), req.GetAction(), req.GetContext())
+		if err := contextConflictError(evalContext, subject, resource, action); err != nil {
+			return status.Errorf(codes.InvalidArgument, "evaluation %d: %v", i, err)
+		}
+	}
+	return nil
 }
 
 // evaluateAll uses BatchCheck to evaluate all items in parallel.

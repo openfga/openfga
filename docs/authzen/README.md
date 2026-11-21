@@ -43,7 +43,7 @@ AuthZEN allows `properties` objects on `subject`, `resource`, and `action`. Open
 
 **Note:** Underscore is used as the separator because OpenFGA does not allow condition parameters with `.` in their names.
 
-**Precedence:** If there's a key conflict between properties and the request-level `context`, the request-level `context` takes precedence. For example, if both `context.subject.department` and `subject.properties.department` are specified, the value from `context` is used.
+**Conflicts:** If a request-level `context` key matches a namespaced property key, the request is rejected with HTTP 400, whatever the values are, because neither value can be picked over the other. For example, `subject.properties.role = "viewer"` together with `context.subject_role = "viewer"` is rejected. For `evaluations`, every item is checked after applying the top-level defaults, and a conflict in any item rejects the whole request in all `evaluations_semantic` modes, including items that a short-circuit would never evaluate.
 
 **Tradeoff:** This approach requires authorization models to be aware of the namespacing convention. Models must reference properties as `context["subject_department"]` rather than `context["department"]`.
 
@@ -121,6 +121,7 @@ AuthZEN's `evaluations` endpoint supports semantic options to control batch exec
 | Condition | AuthZEN HTTP Status | Notes |
 |-----------|-------------------|-------|
 | Missing required fields | 400 Bad Request | Subject, resource, or action missing |
+| `context` key overlaps a property | 400 Bad Request | For example `context.subject_role` with `subject.properties.role`; for `evaluations`, the whole request is rejected in every semantic |
 | Invalid store ID | 404 Not Found | Store does not exist |
 | Invalid authorization model | 400 Bad Request | Model ID invalid or not found |
 | Internal error | 500 Internal Server Error | Unexpected processing errors |
@@ -419,7 +420,7 @@ AuthZEN `properties` on `subject`, `resource`, and `action` are automatically me
 | `resource.properties.classification` | `resource_classification` |
 | `action.properties.severity` | `action_severity` |
 
-**Precedence:** Request-level `context` takes precedence over properties if there are key conflicts.
+**Conflicts:** A request whose `context` sets a key that is also produced from a property (for example `context.subject_department` together with `subject.properties.department`) is rejected with HTTP 400, even when both values are the same.
 
 ```json
 {

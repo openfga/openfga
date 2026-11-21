@@ -20,7 +20,7 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 - ✅ Subject properties merged with `subject_` prefix (e.g., `subject_department`)
 - ✅ Resource properties merged with `resource_` prefix (e.g., `resource_classification`)
 - ✅ Action properties merged with `action_` prefix (e.g., `action_method`)
-- ✅ Explicit `context` values take precedence over properties
+- ✅ A `context` key that matches a namespaced property key (e.g., `context.subject_role` with `subject.properties.role`) is rejected with HTTP 400, even when both values are the same
 - ✅ Properties available for use in OpenFGA conditions
 
 ### :evaluations-semantic
