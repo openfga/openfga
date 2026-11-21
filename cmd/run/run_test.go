@@ -1154,6 +1154,73 @@ func TestPlaygroundEnabled(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 }
 
+func TestProfilerAddressFromSchemaEnv(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigDir(t)
+	t.Setenv("OPENFGA_PROFILER_ADDRESS", "")
+
+	_, basepath, _, _ := runtime.Caller(0)
+	jsonSchema, err := os.ReadFile(filepath.Join(filepath.Dir(basepath), "..", "..", ".config-schema.json"))
+	require.NoError(t, err)
+	env := gjson.GetBytes(jsonSchema, "properties.profiler.properties.addr.x-env-variable")
+	require.True(t, env.Exists())
+	require.NotEmpty(t, env.String())
+	t.Setenv(env.String(), "127.0.0.1:4001")
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(_ *cobra.Command, _ []string) error {
+		return nil
+	}
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1:4001", cfg.Profiler.Addr)
+}
+
+func TestProfilerAddressConfigPrecedence(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		address string
+		addr    string
+		flag    string
+		want    string
+	}{
+		{name: "legacy_env", address: "127.0.0.1:4002", want: "127.0.0.1:4002"},
+		{name: "legacy_env_precedes_alias", address: "127.0.0.1:4002", addr: "127.0.0.1:4001", want: "127.0.0.1:4002"},
+		{name: "flag_precedes_env", address: "127.0.0.1:4002", addr: "127.0.0.1:4001", flag: "127.0.0.1:4003", want: "127.0.0.1:4003"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			util.PrepareTempConfigDir(t)
+			t.Setenv("OPENFGA_PROFILER_ADDRESS", test.address)
+			t.Setenv("OPENFGA_PROFILER_ADDR", test.addr)
+
+			runCmd := NewRunCommand()
+			runCmd.RunE = func(_ *cobra.Command, _ []string) error {
+				return nil
+			}
+			rootCmd := cmd.NewRootCommand()
+			rootCmd.AddCommand(runCmd)
+			args := []string{"run"}
+			if test.flag != "" {
+				args = append(args, "--profiler-addr", test.flag)
+			}
+			rootCmd.SetArgs(args)
+			require.NoError(t, rootCmd.Execute())
+
+			cfg, err := ReadConfig()
+			require.NoError(t, err)
+			require.Equal(t, test.want, cfg.Profiler.Addr)
+		})
+	}
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg, err := ReadConfig()
 	require.NoError(t, err)

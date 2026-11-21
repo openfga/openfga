@@ -33,11 +33,13 @@ var (
 type OpenFGATester interface {
 	GetGRPCAddress() string
 	GetHTTPAddress() string
+	GetPlaygroundAddress() string
 }
 
 type serverHandle struct {
-	grpcAddress string
-	httpAddress string
+	grpcAddress       string
+	httpAddress       string
+	playgroundAddress string
 }
 
 func (s *serverHandle) GetGRPCAddress() string {
@@ -48,10 +50,14 @@ func (s *serverHandle) GetHTTPAddress() string {
 	return s.httpAddress
 }
 
+func (s *serverHandle) GetPlaygroundAddress() string {
+	return s.playgroundAddress
+}
+
 // runOpenFGAContainerWithArgs spins up an openfga container with the default configuration
 // exposed for testing purposes. It is assumed that the openfga/dockertest image is available.
 // This function asserts that the container's exit code was 0.
-func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATester {
+func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string, env ...string) OpenFGATester {
 	t.Helper()
 
 	dockerClient, err := client.New(client.FromEnv)
@@ -61,7 +67,7 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	})
 
 	containerCfg := container.Config{
-		Env: []string{},
+		Env: env,
 		ExposedPorts: network.PortSet{
 			httpPort:       {},
 			grpcPort:       {},
@@ -160,6 +166,12 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	}
 	grpcHostPort := m[0].HostPort
 
+	m, ok = ports[playgroundPort]
+	if !ok || len(m) == 0 {
+		t.Fatalf("failed to get playground host port mapping from openfga container")
+	}
+	playgroundHostPort := m[0].HostPort
+
 	if len(commandArgs) > 0 && commandArgs[0] == "run" {
 		// wait for healthy service
 		policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(30 * time.Second))
@@ -202,8 +214,9 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	}
 
 	return &serverHandle{
-		grpcAddress: fmt.Sprintf("localhost:%s", grpcHostPort),
-		httpAddress: fmt.Sprintf("localhost:%s", httpHostPort),
+		grpcAddress:       fmt.Sprintf("localhost:%s", grpcHostPort),
+		httpAddress:       fmt.Sprintf("localhost:%s", httpHostPort),
+		playgroundAddress: fmt.Sprintf("localhost:%s", playgroundHostPort),
 	}
 }
 
@@ -241,6 +254,22 @@ func TestDocker(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, response.StatusCode)
 		})
+	})
+
+	t.Run("profiler_addr_env", func(t *testing.T) {
+		// Reuse the exposed playground port for the profiler while the playground is disabled.
+		tester := runOpenFGAContainerWithArgs(t, []string{"run"},
+			"OPENFGA_PROFILER_ENABLED=true",
+			"OPENFGA_PROFILER_ADDR=:3000",
+			"OPENFGA_PLAYGROUND_ENABLED=false",
+		)
+
+		response, err := retryablehttp.Get(fmt.Sprintf("http://%s/debug/pprof/", tester.GetPlaygroundAddress()))
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, response.Body.Close())
+		})
+		require.Equal(t, http.StatusOK, response.StatusCode)
 	})
 
 	t.Run("migrate_command", func(t *testing.T) {
