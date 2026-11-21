@@ -3,9 +3,10 @@
 package storage
 
 import (
+	"bytes"
 	"math"
 	"math/rand"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var (
@@ -336,14 +336,28 @@ func InvariantCacheKey(storeID, modelID string, ctx *structpb.Struct, contextual
 	builder.EncodeString(storeID)
 	builder.EncodeString(modelID)
 
-	sortedTuples := make(tuple.TupleKeys, len(contextualTuples))
-	copy(sortedTuples, contextualTuples)
-	sort.Sort(sortedTuples)
-
-	ts := make([]keys.Serializable, len(sortedTuples))
-	for i, t := range sortedTuples {
+	ts := make([]keys.Serializable, len(contextualTuples))
+	for i, t := range contextualTuples {
 		ts[i] = (*keys.Tuple)(t)
 	}
+
+	// Sort on the encoded tuple representation rather than with
+	// tuple.TupleKeys. TupleKeys.Less deliberately ignores the condition
+	// context, so tuples that differ only in their context tie on the
+	// comparator and sort.Sort leaves them in an input-order-dependent
+	// order, which leaks the request's tuple order into the invariant
+	// hash. The encoded form includes the condition context, so it totally
+	// orders the request set for any input order.
+	slices.SortFunc(ts, func(a, b keys.Serializable) int {
+		ab, bb := keys.GetBuilder(), keys.GetBuilder()
+		defer ab.Close()
+		defer bb.Close()
+
+		ab.Serialize(a)
+		bb.Serialize(b)
+		return bytes.Compare(ab.Bytes(), bb.Bytes())
+	})
+
 	builder.EncodeArray(ts)
 
 	value := (*keys.PbValue)(structpb.NewStructValue(ctx))
