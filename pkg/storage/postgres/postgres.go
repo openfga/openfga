@@ -884,7 +884,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows})
+	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows, ctx: ctx})
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -978,7 +978,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows})
+	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows, ctx: ctx})
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}

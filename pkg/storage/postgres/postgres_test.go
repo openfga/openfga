@@ -554,6 +554,41 @@ func TestCancelledQueryContextError(t *testing.T) {
 	})
 }
 
+// errRows is a pgx.Rows whose iteration failed.
+type errRows struct {
+	pgx.Rows
+	err error
+}
+
+func (r errRows) Err() error { return r.err }
+
+func TestContextError(t *testing.T) {
+	canceled := &pgconn.PgError{Code: queryCanceledCode}
+	other := &pgconn.PgError{Code: "P0001"}
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	t.Run("nil_error", func(t *testing.T) {
+		require.NoError(t, contextError(done, nil))
+	})
+	t.Run("live_context_keeps_the_error", func(t *testing.T) {
+		require.Equal(t, canceled, contextError(context.Background(), canceled))
+	})
+	t.Run("done_context_maps_a_cancelled_query", func(t *testing.T) {
+		err := contextError(done, canceled)
+		require.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, canceled)
+		require.Equal(t, err, contextError(done, err), "idempotent")
+	})
+	t.Run("done_context_keeps_other_errors", func(t *testing.T) {
+		require.Equal(t, other, contextError(done, other))
+	})
+	t.Run("rows_without_a_context_return_their_error", func(t *testing.T) {
+		rows := &pgxRowsWrapper{rows: errRows{err: other}}
+		require.Equal(t, other, rows.Err())
+	})
+}
+
 func TestBeforeConnectHook(t *testing.T) {
 	noOpLogger := logger.NewNoopLogger()
 	t.Run("sets the password from the file", func(t *testing.T) {

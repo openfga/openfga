@@ -17,7 +17,7 @@ const queryCanceledCode = "57014"
 // context is done, to that context error: what pgx returns when it closes the
 // connection instead. Any other error is returned unchanged.
 func contextError(ctx context.Context, err error) error {
-	if err == nil || ctx.Err() == nil || errors.Is(err, ctx.Err()) {
+	if err == nil || ctx == nil || ctx.Err() == nil || errors.Is(err, ctx.Err()) {
 		return err
 	}
 	var pgErr *pgconn.PgError
