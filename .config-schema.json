@@ -327,6 +327,13 @@
                     "default": "0s",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
                 },
+                "cancelRequestDelay": {
+                    "description": "PostgreSQL only. When set, a query whose context is cancelled while the database is still running it is cancelled with a server-side cancel request sent after this delay and its connection is kept; when unset (0) the connection is closed and a new one is dialed",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_DATASTORE_CANCEL_REQUEST_DELAY"
+                },
                 "metrics": {
                     "type": "object",
                     "properties": {

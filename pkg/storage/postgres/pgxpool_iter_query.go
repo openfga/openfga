@@ -21,9 +21,9 @@ func (c *pgxConnConnection) Query(ctx context.Context, sql string, args ...any) 
 
 	rows, err := conn.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, contextError(ctx, err)
 	}
-	return &pgxRowsWrapper{conn: conn, rows: rows}, nil
+	return &pgxRowsWrapper{conn: conn, rows: rows, ctx: ctx}, nil
 }
 
 func (c *pgxConnConnection) Close() error {
@@ -41,9 +41,9 @@ var _ sqlcommon.Connection = (*pgxTxConnection)(nil)
 func (c *pgxTxConnection) Query(ctx context.Context, sql string, args ...any) (sqlcommon.Rows, error) {
 	rows, err := c.tx.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, contextError(ctx, err)
 	}
-	return &pgxRowsWrapper{rows: rows}, nil
+	return &pgxRowsWrapper{rows: rows, ctx: ctx}, nil
 }
 
 func (c *pgxTxConnection) Close() error {
@@ -83,10 +83,11 @@ type PgxExec interface {
 type pgxRowsWrapper struct {
 	conn *pgxpool.Conn
 	rows pgx.Rows
+	ctx  context.Context
 }
 
 func (r *pgxRowsWrapper) Err() error {
-	return r.rows.Err()
+	return contextError(r.ctx, r.rows.Err())
 }
 
 func (r *pgxRowsWrapper) Next() bool {

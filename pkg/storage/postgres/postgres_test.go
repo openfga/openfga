@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -382,27 +383,41 @@ func TestParseConfig(t *testing.T) {
 }
 
 func TestParseConfigCancelRequestDelay(t *testing.T) {
+	const uri = "postgres://abc:passwd@localhost:5346/dbname"
+
 	t.Run("unset_keeps_the_driver_default", func(t *testing.T) {
-		parsed, err := parseConfig("postgres://abc:passwd@localhost:5346/dbname", false, &sqlcommon.Config{
+		parsed, err := parseConfig(uri, false, &sqlcommon.Config{
 			Logger: logger.NewNoopLogger(),
 		})
 		require.NoError(t, err)
-		defaultCfg, err := pgxpool.ParseConfig("postgres://abc:passwd@localhost:5346/dbname")
+		defaultCfg, err := pgxpool.ParseConfig(uri)
 		require.NoError(t, err)
 		conn := &pgconn.PgConn{}
 		require.IsType(t, defaultCfg.ConnConfig.BuildContextWatcherHandler(conn), parsed.ConnConfig.BuildContextWatcherHandler(conn))
 	})
 
 	t.Run("set_installs_the_cancel_request_handler", func(t *testing.T) {
-		parsed, err := parseConfig("postgres://abc:passwd@localhost:5346/dbname", false, &sqlcommon.Config{
+		for _, delay := range []time.Duration{25 * time.Millisecond, 6 * time.Second} {
+			parsed, err := parseConfig(uri, false, &sqlcommon.Config{
+				Logger:             logger.NewNoopLogger(),
+				CancelRequestDelay: delay,
+			})
+			require.NoError(t, err)
+			handler, ok := parsed.ConnConfig.BuildContextWatcherHandler(&pgconn.PgConn{}).(*pgconn.CancelRequestContextWatcherHandler)
+			require.True(t, ok)
+			require.Equal(t, delay, handler.CancelRequestDelay)
+			// pgx counts both delays from the context cancellation, so the
+			// fallback deadline must leave room for the cancel request.
+			require.Equal(t, delay+cancelDeadlineDelay, handler.DeadlineDelay)
+		}
+	})
+
+	t.Run("too_large_is_rejected", func(t *testing.T) {
+		_, err := parseConfig(uri, false, &sqlcommon.Config{
 			Logger:             logger.NewNoopLogger(),
-			CancelRequestDelay: 25 * time.Millisecond,
+			CancelRequestDelay: time.Duration(math.MaxInt64),
 		})
-		require.NoError(t, err)
-		handler, ok := parsed.ConnConfig.BuildContextWatcherHandler(&pgconn.PgConn{}).(*pgconn.CancelRequestContextWatcherHandler)
-		require.True(t, ok)
-		require.Equal(t, 25*time.Millisecond, handler.CancelRequestDelay)
-		require.Equal(t, cancelDeadlineDelay, handler.DeadlineDelay)
+		require.ErrorContains(t, err, "cancel request delay")
 	})
 }
 
@@ -427,7 +442,7 @@ func TestCancelledQueryKeepsConnection(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 		_, err = pool.Exec(ctx, "SELECT pg_sleep(5)")
-		require.Error(t, err)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 
 		// The next query reuses the connection or replaces it.
 		require.NoError(t, pool.Ping(context.Background()))
@@ -444,6 +459,98 @@ func TestCancelledQueryKeepsConnection(t *testing.T) {
 			sqlcommon.WithCancelRequestDelay(10*time.Millisecond),
 		))
 		require.Equal(t, before, after)
+	})
+}
+
+// A query cancelled server-side ends with a PostgreSQL error, where pgx returns
+// the context error when it closes the connection instead. The datastore maps it
+// back so callers still tell a cancelled or timed-out request from a database
+// error, and leaves every other error alone.
+func TestCancelledQueryContextError(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	uri := testDatastore.GetConnectionURI(true)
+
+	const slowQuery = "SELECT pg_sleep(5)"
+
+	timeout := func(t *testing.T) context.Context {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		t.Cleanup(cancel)
+		return ctx
+	}
+
+	t.Run("cancelled_server_side", func(t *testing.T) {
+		ds, err := New(uri, sqlcommon.NewConfig(sqlcommon.WithCancelRequestDelay(10*time.Millisecond)))
+		require.NoError(t, err)
+		defer ds.Close()
+		pool := ds.primaryDB
+
+		t.Run("deadline_exceeded", func(t *testing.T) {
+			_, err := pool.Exec(timeout(t), slowQuery)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			var pgErr *pgconn.PgError
+			require.ErrorAs(t, err, &pgErr)
+			require.Equal(t, queryCanceledCode, pgErr.Code)
+		})
+
+		t.Run("canceled", func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			time.AfterFunc(50*time.Millisecond, cancel)
+			_, err := pool.Exec(ctx, slowQuery)
+			require.ErrorIs(t, err, context.Canceled)
+		})
+
+		t.Run("query_row", func(t *testing.T) {
+			var ignored any
+			require.ErrorIs(t, pool.QueryRow(timeout(t), slowQuery).Scan(&ignored), context.DeadlineExceeded)
+		})
+
+		t.Run("rows", func(t *testing.T) {
+			rows, err := pool.Query(timeout(t), slowQuery)
+			require.NoError(t, err)
+			defer rows.Close()
+			require.False(t, rows.Next())
+			require.ErrorIs(t, rows.Err(), context.DeadlineExceeded)
+		})
+
+		t.Run("transaction", func(t *testing.T) {
+			ctx := timeout(t)
+			tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+			require.NoError(t, err)
+			defer func() { _ = tx.Rollback(context.Background()) }()
+			_, err = tx.Exec(ctx, slowQuery)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+		})
+
+		t.Run("connector", func(t *testing.T) {
+			ctx := timeout(t)
+			conn, err := (*pgxPoolConnector)(pool.Pool).Connect(ctx)
+			require.NoError(t, err)
+			defer conn.Close()
+			rows, err := conn.Query(ctx, slowQuery)
+			require.NoError(t, err)
+			defer rows.Close()
+			require.False(t, rows.Next())
+			require.ErrorIs(t, rows.Err(), context.DeadlineExceeded)
+		})
+	})
+
+	t.Run("ended_before_the_cancel_request", func(t *testing.T) {
+		ds, err := New(uri, sqlcommon.NewConfig(sqlcommon.WithCancelRequestDelay(time.Second)))
+		require.NoError(t, err)
+		defer ds.Close()
+
+		t.Run("other_errors_are_kept", func(t *testing.T) {
+			_, err := ds.primaryDB.Exec(timeout(t), "DO $$ BEGIN PERFORM pg_sleep(0.2); RAISE EXCEPTION 'boom'; END $$")
+			var pgErr *pgconn.PgError
+			require.ErrorAs(t, err, &pgErr)
+			require.Equal(t, "P0001", pgErr.Code)
+			require.NotErrorIs(t, err, context.DeadlineExceeded)
+		})
+
+		t.Run("a_result_is_a_result", func(t *testing.T) {
+			_, err := ds.primaryDB.Exec(timeout(t), "SELECT pg_sleep(0.2)")
+			require.NoError(t, err)
+		})
 	})
 }
 
@@ -685,8 +792,8 @@ func TestNewDB(t *testing.T) {
 }
 
 func TestGetPgxPool(t *testing.T) {
-	pool1 := &pgxpool.Pool{}
-	pool2 := &pgxpool.Pool{}
+	pool1 := &contextErrorPool{Pool: &pgxpool.Pool{}}
+	pool2 := &contextErrorPool{Pool: &pgxpool.Pool{}}
 	t.Run("high_consistency", func(t *testing.T) {
 		ds := &Datastore{
 			primaryDB:   pool1,
