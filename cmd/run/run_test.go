@@ -1198,6 +1198,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.datastore.properties.connMaxLifetime.default")
 	require.True(t, val.Exists())
 
+	val = res.Get("properties.datastore.properties.cancelRequestDelay.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Datastore.CancelRequestDelay.String())
+
 	val = res.Get("properties.datastore.properties.metrics.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.False(t, val.Bool())

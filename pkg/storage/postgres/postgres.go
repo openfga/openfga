@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/jackc/pgpassfile"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,8 +49,8 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 
 // Datastore provides a PostgreSQL based implementation of [storage.OpenFGADatastore].
 type Datastore struct {
-	primaryDB                 *pgxpool.Pool
-	secondaryDB               *pgxpool.Pool
+	primaryDB                 *contextErrorPool
+	secondaryDB               *contextErrorPool
 	logger                    logger.Logger
 	primaryDBStatsCollector   prometheus.Collector
 	secondaryDBStatsCollector prometheus.Collector
@@ -59,6 +61,14 @@ type Datastore struct {
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
+
+// cancelDeadlineDelay bounds how long a cancelled query keeps its connection
+// after the cancel request is sent. A server that has not answered by then is
+// treated as unreachable and the connection is closed, as it is by default.
+const cancelDeadlineDelay = 5 * time.Second
+
+// maxCancelRequestDelay keeps the connection deadline from overflowing.
+const maxCancelRequestDelay = time.Duration(math.MaxInt64) - cancelDeadlineDelay
 
 func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
 	c, err := pgxpool.ParseConfig(uri)
@@ -110,6 +120,21 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 
 	if cfg.PingTimeout != 0 {
 		c.PingTimeout = cfg.PingTimeout
+	}
+
+	if cfg.CancelRequestDelay > 0 {
+		if cfg.CancelRequestDelay > maxCancelRequestDelay {
+			return nil, fmt.Errorf("cancel request delay %s is above the maximum of %s", cfg.CancelRequestDelay, maxCancelRequestDelay)
+		}
+		delay := cfg.CancelRequestDelay
+		c.ConnConfig.BuildContextWatcherHandler = func(pgConn *pgconn.PgConn) ctxwatch.Handler {
+			return &pgconn.CancelRequestContextWatcherHandler{
+				Conn:               pgConn,
+				CancelRequestDelay: delay,
+				// pgx counts both delays from the context cancellation.
+				DeadlineDelay: delay + cancelDeadlineDelay,
+			}
+		}
 	}
 
 	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})
@@ -288,16 +313,19 @@ func NewWithDB(primaryDB, secondaryDB *pgxpool.Pool, cfg *sqlcommon.Config) (*Da
 		}
 	}
 
-	return &Datastore{
-		primaryDB:                 primaryDB,
-		secondaryDB:               secondaryDB,
+	ds := &Datastore{
+		primaryDB:                 &contextErrorPool{primaryDB},
 		logger:                    cfg.Logger,
 		primaryDBStatsCollector:   primaryCollector,
 		secondaryDBStatsCollector: secondaryCollector,
 		maxTuplesPerWriteField:    cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:     cfg.MaxTypesPerModelField,
 		versionReady:              false,
-	}, nil
+	}
+	if secondaryDB != nil {
+		ds.secondaryDB = &contextErrorPool{secondaryDB}
+	}
+	return ds, nil
 }
 
 func (s *Datastore) isSecondaryConfigured() bool {
@@ -324,7 +352,7 @@ func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
 }
 
 // getPgxPool returns the pgxpool.Pool based on consistency options.
-func (s *Datastore) getPgxPool(consistency openfgav1.ConsistencyPreference) *pgxpool.Pool {
+func (s *Datastore) getPgxPool(consistency openfgav1.ConsistencyPreference) *contextErrorPool {
 	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// If we are using higher consistency, we need to use the write database.
 		return s.primaryDB
@@ -366,7 +394,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	return iter.ToArray(ctx, options.Pagination)
 }
 
-func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions, db *pgxpool.Pool) (*sqlcommon.SQLTupleIterator, error) {
+func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions, db *contextErrorPool) (*sqlcommon.SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()
 
@@ -415,7 +443,7 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), sb)
+	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db.Pool), sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -773,7 +801,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), sb)
+	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db.Pool), sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -822,7 +850,7 @@ func (s *Datastore) ReadStartingWithUser(
 	if len(filter.Conditions) > 0 {
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db), builder)
+	poolGetRows, err := sqlcommon.NewRowGetter((*pgxPoolConnector)(db.Pool), builder)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -856,7 +884,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows})
+	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows, ctx: ctx})
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -950,7 +978,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows})
+	ret, err := sqlcommon.ConstructAuthorizationModelFromSQLRows(&pgxRowsWrapper{rows: rows, ctx: ctx})
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -1353,7 +1381,7 @@ func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	primaryStatus, err := isDBReady(ctx, s.versionReady, s.primaryDB)
+	primaryStatus, err := isDBReady(ctx, s.versionReady, s.primaryDB.Pool)
 	if err != nil {
 		return primaryStatus, err
 	}
@@ -1368,7 +1396,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 		primaryStatus.Message = "ready"
 	}
 
-	secondaryStatus, err := isDBReady(ctx, s.versionReady, s.secondaryDB)
+	secondaryStatus, err := isDBReady(ctx, s.versionReady, s.secondaryDB.Pool)
 	if err != nil {
 		secondaryStatus.Message = err.Error()
 		secondaryStatus.IsReady = false
