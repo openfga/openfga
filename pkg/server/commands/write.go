@@ -11,6 +11,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/config"
@@ -78,6 +79,7 @@ func parseOptionOnMissing(wr *openfgav1.WriteRequestDeletes) (storage.OnMissingD
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
+// Tuple write validation uses typesystem in ctx, see [typesystem.ContextWithTypesystem].
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
@@ -118,8 +120,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	ctx, span := tracer.Start(ctx, "validateWriteRequest")
 	defer span.End()
 
-	store := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	deletes := req.GetDeletes().GetTupleKeys()
 	writes := req.GetWrites().GetTupleKeys()
 
@@ -128,21 +128,9 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	if len(writes) > 0 {
-		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return serverErrors.AuthorizationModelNotFound(modelID)
-			}
-			return serverErrors.HandleError("", err)
-		}
-
-		if !typesystem.IsSchemaVersionSupported(authModel.GetSchemaVersion()) {
-			return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-		}
-
-		typesys, err := typesystem.New(authModel)
-		if err != nil {
-			return err
+		typesys, ok := typesystem.TypesystemFromContext(ctx)
+		if !ok {
+			return fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 		}
 
 		for _, tk := range writes {
