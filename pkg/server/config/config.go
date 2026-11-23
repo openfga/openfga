@@ -520,6 +520,10 @@ func (cfg *Config) VerifyServerSettings() error {
 		return fmt.Errorf("config 'maxConcurrentChecksPerBatchCheck' cannot be 0")
 	}
 
+	if cfg.ResolveNodeLimit == 0 {
+		return fmt.Errorf("config 'resolveNodeLimit' cannot be 0")
+	}
+
 	if cfg.ResolveNodeBreadthLimit == 0 {
 		return fmt.Errorf("config 'resolveNodeBreadthLimit' cannot be 0")
 	}

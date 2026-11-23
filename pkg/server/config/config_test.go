@@ -692,6 +692,10 @@ func TestVerifyServerSettings(t *testing.T) {
 				set:      func(cfg *Config) { cfg.MaxConcurrentChecksPerBatchCheck = 0 },
 				expected: "config 'maxConcurrentChecksPerBatchCheck' cannot be 0",
 			},
+			"resolveNodeLimit": {
+				set:      func(cfg *Config) { cfg.ResolveNodeLimit = 0 },
+				expected: "config 'resolveNodeLimit' cannot be 0",
+			},
 			"resolveNodeBreadthLimit": {
 				set:      func(cfg *Config) { cfg.ResolveNodeBreadthLimit = 0 },
 				expected: "config 'resolveNodeBreadthLimit' cannot be 0",
