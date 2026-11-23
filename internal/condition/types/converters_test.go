@@ -2,6 +2,7 @@ package types
 
 import (
 	"math"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -106,7 +107,41 @@ func TestNumericTypeConverterFloat64(t *testing.T) {
 			t.Run(input, func(t *testing.T) {
 				got, err := numericTypeConverterFunc[float64](input)
 				require.NoError(t, err)
-				require.InDelta(t, want, got.(float64), 1e-12)
+				// A delta of 0 compares exactly, so a result that is one ulp
+				// off fails.
+				require.InDelta(t, want, got, 0)
+			})
+		}
+	})
+
+	t.Run("rounds_once_to_nearest_float64", func(t *testing.T) {
+		// 1+2^-53 is exactly halfway between 1 and the next float64, 1+2^-52.
+		// A decimal string that is above that midpoint by less than what a
+		// 64-bit mantissa can hold has to round up to 1+2^-52. Rounding it to
+		// 64 bits first lands exactly on the midpoint, and rounding that to a
+		// float64 gives 1 (ties to even), which is one ulp too low.
+		nextAfterOne := math.Nextafter(1, 2)
+		tests := map[string]float64{
+			// Above the midpoint.
+			"1.0000000000000001110223024625156540423632": nextAfterOne,
+			// Exactly the midpoint: ties to even, which is 1.
+			"1.00000000000000011102230246251565404236316680908203125": 1,
+			// Below the midpoint.
+			"1.0000000000000001110223024625156540423631": 1,
+			// Same values, negated.
+			"-1.0000000000000001110223024625156540423632": -nextAfterOne,
+			"-1.0000000000000001110223024625156540423631": -1,
+		}
+		for input, want := range tests {
+			t.Run(input, func(t *testing.T) {
+				got, err := numericTypeConverterFunc[float64](input)
+				require.NoError(t, err)
+				require.InDelta(t, want, got, 0)
+
+				// It has to give the same float64 as strconv.ParseFloat.
+				parsed, err := strconv.ParseFloat(input, 64)
+				require.NoError(t, err)
+				require.InDelta(t, parsed, got, 0)
 			})
 		}
 	})
@@ -114,7 +149,22 @@ func TestNumericTypeConverterFloat64(t *testing.T) {
 	t.Run("max_float64_string_converts", func(t *testing.T) {
 		got, err := numericTypeConverterFunc[float64]("1.7976931348623157e308")
 		require.NoError(t, err)
-		require.InEpsilon(t, math.MaxFloat64, got.(float64), 1e-12)
+		require.InDelta(t, math.MaxFloat64, got, 0)
+	})
+
+	t.Run("smallest_float64_string_converts", func(t *testing.T) {
+		got, err := numericTypeConverterFunc[float64]("4.9e-324")
+		require.NoError(t, err)
+		require.InDelta(t, math.SmallestNonzeroFloat64, got, 0)
+	})
+
+	t.Run("invalid_strings_error", func(t *testing.T) {
+		// Only decimal strings are accepted: not NaN, not hexadecimal floats
+		// and not digit separators, which strconv.ParseFloat alone would take.
+		for _, input := range []string{"", "abc", "NaN", "nan", "0x1p-2", "1_000", "1.2.3", " 1.5"} {
+			_, err := numericTypeConverterFunc[float64](input)
+			require.Error(t, err, input)
+		}
 	})
 
 	t.Run("overflow_errors", func(t *testing.T) {
