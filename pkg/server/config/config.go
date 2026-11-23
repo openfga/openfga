@@ -508,6 +508,26 @@ func (cfg *Config) VerifyServerSettings() error {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
 
+	if cfg.MaxConcurrentReadsForCheck == 0 {
+		return fmt.Errorf("config 'maxConcurrentReadsForCheck' cannot be 0")
+	}
+
+	if cfg.MaxConcurrentReadsForListObjects == 0 {
+		return fmt.Errorf("config 'maxConcurrentReadsForListObjects' cannot be 0")
+	}
+
+	if cfg.MaxConcurrentChecksPerBatchCheck == 0 {
+		return fmt.Errorf("config 'maxConcurrentChecksPerBatchCheck' cannot be 0")
+	}
+
+	if cfg.ResolveNodeLimit == 0 {
+		return fmt.Errorf("config 'resolveNodeLimit' cannot be 0")
+	}
+
+	if cfg.ResolveNodeBreadthLimit == 0 {
+		return fmt.Errorf("config 'resolveNodeBreadthLimit' cannot be 0")
+	}
+
 	if err := cfg.verifyRequestDurationDatastoreQueryCountBuckets(); err != nil {
 		return err
 	}

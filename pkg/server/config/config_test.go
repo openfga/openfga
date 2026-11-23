@@ -674,6 +674,44 @@ func TestVerifyServerSettings(t *testing.T) {
 		require.EqualError(t, err, "config 'maxConcurrentReadsForListUsers' cannot be 0")
 	})
 
+	// A zero here is not "unlimited": it makes requests hang, return no results or panic.
+	t.Run("concurrency_limits_not_zero", func(t *testing.T) {
+		tests := map[string]struct {
+			set      func(cfg *Config)
+			expected string
+		}{
+			"maxConcurrentReadsForCheck": {
+				set:      func(cfg *Config) { cfg.MaxConcurrentReadsForCheck = 0 },
+				expected: "config 'maxConcurrentReadsForCheck' cannot be 0",
+			},
+			"maxConcurrentReadsForListObjects": {
+				set:      func(cfg *Config) { cfg.MaxConcurrentReadsForListObjects = 0 },
+				expected: "config 'maxConcurrentReadsForListObjects' cannot be 0",
+			},
+			"maxConcurrentChecksPerBatchCheck": {
+				set:      func(cfg *Config) { cfg.MaxConcurrentChecksPerBatchCheck = 0 },
+				expected: "config 'maxConcurrentChecksPerBatchCheck' cannot be 0",
+			},
+			"resolveNodeLimit": {
+				set:      func(cfg *Config) { cfg.ResolveNodeLimit = 0 },
+				expected: "config 'resolveNodeLimit' cannot be 0",
+			},
+			"resolveNodeBreadthLimit": {
+				set:      func(cfg *Config) { cfg.ResolveNodeBreadthLimit = 0 },
+				expected: "config 'resolveNodeBreadthLimit' cannot be 0",
+			},
+		}
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				cfg := DefaultConfig()
+				test.set(cfg)
+
+				err := cfg.VerifyServerSettings()
+				require.EqualError(t, err, test.expected)
+			})
+		}
+	})
+
 	t.Run("empty_request_duration_datastore_query_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestDurationDatastoreQueryCountBuckets = []string{}
