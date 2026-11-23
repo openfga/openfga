@@ -110,6 +110,18 @@ func TestNewCompiled(t *testing.T) {
 }
 
 func TestEvaluate(t *testing.T) {
+	// A condition on a double parameter, used to check that a numeric string
+	// gives the same result as the equivalent JSON number.
+	aboveOne := &openfgav1.Condition{
+		Name:       "above_one",
+		Expression: "x > 1.0",
+		Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+			"x": {
+				TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_DOUBLE,
+			},
+		},
+	}
+
 	var tests = []struct {
 		name      string
 		condition *openfgav1.Condition
@@ -117,6 +129,32 @@ func TestEvaluate(t *testing.T) {
 		result    condition.EvaluationResult
 		err       *condition.EvaluationError
 	}{
+		{
+			name:      "success_double_string_above_one",
+			condition: aboveOne,
+			context:   map[string]interface{}{"x": "1.5"},
+			result:    condition.EvaluationResult{ConditionMet: true},
+		},
+		{
+			name:      "success_double_string_equal_to_one",
+			condition: aboveOne,
+			context:   map[string]interface{}{"x": "1.0"},
+			result:    condition.EvaluationResult{ConditionMet: false},
+		},
+		{
+			// The nearest float64 to this string is 1.0000000000000002, the same
+			// value as the JSON number in the next case.
+			name:      "success_double_string_one_ulp_above_one",
+			condition: aboveOne,
+			context:   map[string]interface{}{"x": "1.0000000000000001110223024625156540423632"},
+			result:    condition.EvaluationResult{ConditionMet: true},
+		},
+		{
+			name:      "success_double_number_one_ulp_above_one",
+			condition: aboveOne,
+			context:   map[string]interface{}{"x": 1.0000000000000002},
+			result:    condition.EvaluationResult{ConditionMet: true},
+		},
 		{
 			name: "success_condition_met",
 			condition: &openfgav1.Condition{

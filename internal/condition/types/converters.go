@@ -1,10 +1,12 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
 	"reflect"
+	"strconv"
 	"time"
 )
 
@@ -25,8 +27,9 @@ func numericTypeConverterFunc[T int64 | uint64 | float64](value any) (any, error
 
 	floatValue, ok := value.(float64)
 	bigFloat := big.NewFloat(floatValue)
+	var stringValue string
 	if !ok {
-		stringValue, ok := value.(string)
+		stringValue, ok = value.(string)
 		if !ok {
 			return nil, fmt.Errorf("expected type value '%T', but found '%s'", *new(T), reflect.TypeOf(value))
 		}
@@ -68,11 +71,22 @@ func numericTypeConverterFunc[T int64 | uint64 | float64](value any) (any, error
 		return numericValue, nil
 
 	case float64:
-		numericValue, a := bigFloat.Float64()
-		if a == big.Above || a == big.Below {
-			return nil, fmt.Errorf("number cannot be represented as a float64: %s", bigFloat.String())
+		// A float64 value was returned at the top, so what is left to convert
+		// is a string. Convert the string itself instead of bigFloat: bigFloat
+		// has only 64 bits of precision, so rounding it to a float64 would
+		// round twice and could be off by one ulp for a decimal just above a
+		// midpoint between two float64 values. strconv.ParseFloat rounds once,
+		// to the nearest float64.
+		//
+		// A decimal such as "0.1" has no exact float64, so the rounding itself
+		// is not an error. Only reject values that cannot be represented at
+		// all: overflow to infinity (strconv reports it as ErrRange), or a
+		// non-zero value that underflows to zero.
+		numericValue, err := strconv.ParseFloat(stringValue, 64)
+		if err != nil && !errors.Is(err, strconv.ErrRange) {
+			return nil, fmt.Errorf("expected a %T value, but found invalid string value '%v'", n, value)
 		}
-		if math.IsInf(numericValue, 0) {
+		if math.IsInf(numericValue, 0) || (numericValue == 0 && bigFloat.Sign() != 0) {
 			return nil, fmt.Errorf("number cannot be represented as a float64: %s", bigFloat.String())
 		}
 		return numericValue, nil
