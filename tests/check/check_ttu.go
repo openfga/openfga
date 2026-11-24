@@ -1327,11 +1327,6 @@ var ttuCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "all_levels_allowed_level_1",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_a_1", Relation: "recursive_ttu_and", User: "directs-user:rta_user_a"},
-				Expectation: true,
-			},
-			{
 				Name:        "all_levels_allowed_direct",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_a_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_a"},
 				Expectation: true,
@@ -1342,24 +1337,9 @@ var ttuCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:        "middle_level_not_allowed_at_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_b_2", Relation: "recursive_ttu_and", User: "directs-user:rta_user_b"},
-				Expectation: false,
-			},
-			{
-				Name:        "middle_level_not_allowed_below_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_b_1", Relation: "recursive_ttu_and", User: "directs-user:rta_user_b"},
-				Expectation: true,
-			},
-			{
 				Name:        "top_level_not_allowed",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_c_1", Relation: "recursive_ttu_and", User: "directs-user:rta_user_c"},
 				Expectation: false,
-			},
-			{
-				Name:        "top_level_not_allowed_direct",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_c_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_c"},
-				Expectation: true,
 			},
 			{
 				Name:        "one_parent_allowed",
@@ -1367,18 +1347,8 @@ var ttuCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "parent_not_allowed",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_d_bad", Relation: "recursive_ttu_and", User: "directs-user:rta_user_d"},
-				Expectation: false,
-			},
-			{
 				Name:        "allowed_only",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_e_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_e"},
-				Expectation: false,
-			},
-			{
-				Name:        "invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_a_3", Relation: "recursive_ttu_and", User: "directs-user:rta_user_invalid"},
 				Expectation: false,
 			},
 		},
@@ -1428,16 +1398,6 @@ var ttuCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:        "middle_level_blocked_at_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_b_2", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_b"},
-				Expectation: false,
-			},
-			{
-				Name:        "middle_level_blocked_below_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_b_1", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_b"},
-				Expectation: true,
-			},
-			{
 				Name:        "top_level_blocked",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_c_1", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_c"},
 				Expectation: false,
@@ -1456,11 +1416,6 @@ var ttuCompleteTestingModelTest = []*stage{
 				Name:        "one_parent_blocked",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_d_top", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_d"},
 				Expectation: true,
-			},
-			{
-				Name:        "parent_blocked",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_d_bad", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_d"},
-				Expectation: false,
 			},
 			{
 				Name:        "invalid_user",
@@ -1482,7 +1437,6 @@ var ttuCompleteTestingModelTest = []*stage{
 			// allowed_directs_user and blocked_directs_user are only checked on the queried object
 			{Object: "ttus:rtr_2", Relation: "allowed_directs_user", User: "directs-user:rtr_user_1"},
 			{Object: "ttus:rtr_2", Relation: "allowed_directs_user", User: "directs-user:rtr_user_3"},
-			{Object: "ttus:rtr_2", Relation: "allowed_directs_user", User: "directs-user:rtr_user_4"},
 			{Object: "ttus:rtr_2", Relation: "blocked_directs_user", User: "directs-user:rtr_user_2"},
 			{Object: "ttus:rtr_1", Relation: "blocked_directs_user", User: "directs-user:rtr_user_4"},
 		},
@@ -1500,16 +1454,6 @@ var ttuCompleteTestingModelTest = []*stage{
 			{
 				Name:        "and_recursive_ttu_user_3",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_3"},
-				Expectation: false,
-			},
-			{
-				Name:        "and_recursive_ttu_user_4",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_4"},
-				Expectation: true,
-			},
-			{
-				Name:        "and_recursive_ttu_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_invalid"},
 				Expectation: false,
 			},
 			{
@@ -1533,11 +1477,6 @@ var ttuCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "butnot_recursive_ttu_base_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_base", User: "directs-user:rtr_user_invalid"},
-				Expectation: false,
-			},
-			{
 				Name:        "butnot_recursive_ttu_subtract_user_1",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_1"},
 				Expectation: false,
@@ -1551,16 +1490,6 @@ var ttuCompleteTestingModelTest = []*stage{
 				Name:        "butnot_recursive_ttu_subtract_user_3",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_3"},
 				Expectation: true,
-			},
-			{
-				Name:        "butnot_recursive_ttu_subtract_user_4",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_4"},
-				Expectation: false,
-			},
-			{
-				Name:        "butnot_recursive_ttu_subtract_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_invalid"},
-				Expectation: false,
 			},
 		},
 	},

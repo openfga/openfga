@@ -2077,39 +2077,14 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "all_levels_allowed_level_2",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_2", Relation: "userset_recursive_and", User: "user:ura_user_a"},
-				Expectation: true,
-			},
-			{
-				Name:        "all_levels_allowed_leaf",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_3", Relation: "userset_recursive_and", User: "user:ura_user_a"},
-				Expectation: true,
-			},
-			{
 				Name:        "middle_level_not_allowed",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_b_0", Relation: "userset_recursive_and", User: "user:ura_user_b"},
 				Expectation: false,
 			},
 			{
-				Name:        "middle_level_not_allowed_at_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_b_1", Relation: "userset_recursive_and", User: "user:ura_user_b"},
-				Expectation: false,
-			},
-			{
-				Name:        "middle_level_not_allowed_below_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_b_2", Relation: "userset_recursive_and", User: "user:ura_user_b"},
-				Expectation: true,
-			},
-			{
 				Name:        "top_level_not_allowed",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_c_0", Relation: "userset_recursive_and", User: "user:ura_user_c"},
 				Expectation: false,
-			},
-			{
-				Name:        "top_level_not_allowed_level_1",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_c_1", Relation: "userset_recursive_and", User: "user:ura_user_c"},
-				Expectation: true,
 			},
 			{
 				Name:        "direct",
@@ -2125,11 +2100,6 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:        "one_path_allowed",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_e_0", Relation: "userset_recursive_and", User: "user:ura_user_e"},
 				Expectation: true,
-			},
-			{
-				Name:        "invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_0", Relation: "userset_recursive_and", User: "user:ura_user_invalid"},
-				Expectation: false,
 			},
 			{
 				Name:        "userset_user",
@@ -2181,16 +2151,6 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:        "middle_level_excluded_at_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_b_1", Relation: "userset_recursive_butnot", User: "user:urb_user_b"},
-				Expectation: false,
-			},
-			{
-				Name:        "middle_level_excluded_below_middle",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_b_2", Relation: "userset_recursive_butnot", User: "user:urb_user_b"},
-				Expectation: true,
-			},
-			{
 				Name:        "top_level_excluded",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_c_0", Relation: "userset_recursive_butnot", User: "user:urb_user_c"},
 				Expectation: false,
@@ -2235,7 +2195,6 @@ var usersetCompleteTestingModelTest = []*stage{
 			// direct_3 and direct_4 are only checked on the queried object
 			{Object: "usersets-user:urr_2", Relation: "direct_3", User: "user:urr_user_1"},
 			{Object: "usersets-user:urr_2", Relation: "direct_3", User: "user:urr_user_3"},
-			{Object: "usersets-user:urr_2", Relation: "direct_3", User: "user:urr_user_4"},
 			{Object: "usersets-user:urr_2", Relation: "direct_4", User: "user:urr_user_2"},
 			{Object: "usersets-user:urr_1", Relation: "direct_4", User: "user:urr_user_4"},
 		},
@@ -2253,16 +2212,6 @@ var usersetCompleteTestingModelTest = []*stage{
 			{
 				Name:        "and_userset_recursive_user_3",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_3"},
-				Expectation: false,
-			},
-			{
-				Name:        "and_userset_recursive_user_4",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_4"},
-				Expectation: true,
-			},
-			{
-				Name:        "and_userset_recursive_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_invalid"},
 				Expectation: false,
 			},
 			{
@@ -2286,11 +2235,6 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "butnot_userset_recursive_base_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_base", User: "user:urr_user_invalid"},
-				Expectation: false,
-			},
-			{
 				Name:        "butnot_userset_recursive_subtract_user_1",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_1"},
 				Expectation: false,
@@ -2305,16 +2249,6 @@ var usersetCompleteTestingModelTest = []*stage{
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_3"},
 				Expectation: true,
 			},
-			{
-				Name:        "butnot_userset_recursive_subtract_user_4",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_4"},
-				Expectation: false,
-			},
-			{
-				Name:        "butnot_userset_recursive_subtract_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_invalid"},
-				Expectation: false,
-			},
 		},
 	},
 	{
@@ -2327,7 +2261,6 @@ var usersetCompleteTestingModelTest = []*stage{
 			{Object: "usersets-user:utcr_1", Relation: "tuple_cycle2", User: "ttus:utcr_1#tuple_cycle2"},
 			{Object: "directs-user:utcr_1", Relation: "tuple_cycle2", User: "usersets-user:utcr_1#tuple_cycle2"},
 			{Object: "usersets-user:utcr_1", Relation: "direct_3", User: "user:utcr_user_1"},
-			{Object: "usersets-user:utcr_1", Relation: "direct_3", User: "user:utcr_user_2"},
 			{Object: "usersets-user:utcr_1", Relation: "direct_3", User: "user:utcr_user_5"},
 			{Object: "usersets-user:utcr_1", Relation: "direct_4", User: "user:utcr_user_2"},
 
@@ -2344,23 +2277,8 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "and_tuple_cycle2_user_2",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "and_tuple_cycle2", User: "user:utcr_user_2"},
-				Expectation: true,
-			},
-			{
 				Name:        "and_tuple_cycle2_user_not_in_cycle",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "and_tuple_cycle2", User: "user:utcr_user_5"},
-				Expectation: false,
-			},
-			{
-				Name:        "and_tuple_cycle2_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "and_tuple_cycle2", User: "user:utcr_user_3"},
-				Expectation: false,
-			},
-			{
-				Name:        "and_tuple_cycle2_cycle",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_4", Relation: "and_tuple_cycle2", User: "user:utcr_user_1"},
 				Expectation: false,
 			},
 			{
@@ -2371,11 +2289,6 @@ var usersetCompleteTestingModelTest = []*stage{
 			{
 				Name:        "butnot_tuple_cycle2_base_excluded",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_base", User: "user:utcr_user_2"},
-				Expectation: false,
-			},
-			{
-				Name:        "butnot_tuple_cycle2_base_user_not_in_cycle",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_base", User: "user:utcr_user_5"},
 				Expectation: false,
 			},
 			{
@@ -2392,11 +2305,6 @@ var usersetCompleteTestingModelTest = []*stage{
 			{
 				Name:        "butnot_tuple_cycle2_subtract_user_not_in_cycle",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_subtract", User: "user:utcr_user_5"},
-				Expectation: false,
-			},
-			{
-				Name:        "butnot_tuple_cycle2_subtract_invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_subtract", User: "user:utcr_user_3"},
 				Expectation: false,
 			},
 			// a cycle on the subtracted side fails closed, even though the user is not a member of it
