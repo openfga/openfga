@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -183,6 +184,385 @@ func TestCheckStrategiesAgreeOnUserAndWildcardOnSameObjectInExclusion(t *testing
 	}
 }
 
+// A condition error must only fail a Check when its tuple is on the path being checked, whatever the strategy.
+// The weight2 and recursive strategies read every object related to the user, so they also see tuples off the path.
+func TestCheckStrategiesAgreeOnConditionErrors(t *testing.T) {
+	const cond = `
+		condition xcond(x: string) {
+			x == '1'
+		}`
+	const usersetModel = `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with xcond, user]
+				define editor: [document#viewer]` + cond
+	const ttuModel = `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user with xcond, user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent` + cond
+	const recursiveUsersetModel = `
+		model
+			schema 1.1
+		type user
+		type robot
+		type document
+			relations
+				define other: [robot]
+				define viewer: [user with xcond, user, user:*, document#viewer, document#other]` + cond
+	const recursiveTTUModel = `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define parent: [document]
+				define viewer: [user with xcond, user] or viewer from parent` + cond
+	const exclusionModel = `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define viewer: [user]
+				define blocked: [user with xcond, user]
+				define allowed: viewer but not blocked
+		type document
+			relations
+				define access: [group#allowed]` + cond
+	const unionModel = `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define viewer: [user with xcond]
+				define editor: [user]
+				define allowed: viewer or editor
+		type document
+			relations
+				define access: [group#allowed]` + cond
+
+	conditional := func(object, relation, user string) *openfgav1.TupleKey {
+		return tuple.NewTupleKeyWithCondition(object, relation, user, "xcond", nil)
+	}
+	tk := tuple.NewTupleKey
+
+	tests := []struct {
+		name     string
+		model    string
+		relation string
+		tuples   []*openfgav1.TupleKey
+		allowed  bool
+		// errTuple is the tuple named by the expected condition error, if any.
+		errTuple string
+	}{
+		{
+			name:     "userset_off_path_error_is_ignored",
+			model:    usersetModel,
+			relation: "editor",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:off", "viewer", "user:u"),
+				tk("document:d", "editor", "document:on#viewer"),
+			},
+		},
+		{
+			name:     "userset_without_off_path_tuple",
+			model:    usersetModel,
+			relation: "editor",
+			tuples: []*openfgav1.TupleKey{
+				tk("document:d", "editor", "document:on#viewer"),
+			},
+		},
+		{
+			name:     "userset_on_path_error",
+			model:    usersetModel,
+			relation: "editor",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:on", "viewer", "user:u"),
+				tk("document:d", "editor", "document:on#viewer"),
+			},
+			errTuple: "document:on#viewer@user:u",
+		},
+		{
+			name:     "userset_on_path_error_with_off_path_valid_tuple",
+			model:    usersetModel,
+			relation: "editor",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:on", "viewer", "user:u"),
+				tk("document:off", "viewer", "user:u"),
+				tk("document:d", "editor", "document:on#viewer"),
+			},
+			errTuple: "document:on#viewer@user:u",
+		},
+		{
+			name:     "userset_on_path_valid_tuple_with_off_path_error",
+			model:    usersetModel,
+			relation: "editor",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:off", "viewer", "user:u"),
+				tk("document:on", "viewer", "user:u"),
+				tk("document:d", "editor", "document:on#viewer"),
+			},
+			allowed: true,
+		},
+		{
+			name:     "ttu_off_path_error_is_ignored",
+			model:    ttuModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("folder:off", "viewer", "user:u"),
+				tk("document:d", "parent", "folder:on"),
+			},
+		},
+		{
+			name:     "ttu_on_path_error",
+			model:    ttuModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("folder:on", "viewer", "user:u"),
+				tk("document:d", "parent", "folder:on"),
+			},
+			errTuple: "folder:on#viewer@user:u",
+		},
+		{
+			name:     "recursive_userset_off_path_error_is_ignored",
+			model:    recursiveUsersetModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:off", "viewer", "user:u"),
+				tk("document:d", "viewer", "document:a#viewer"),
+				tk("document:a", "viewer", "document:on#viewer"),
+			},
+		},
+		{
+			name:     "recursive_userset_on_path_error",
+			model:    recursiveUsersetModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:on", "viewer", "user:u"),
+				tk("document:d", "viewer", "document:on#viewer"),
+			},
+			errTuple: "document:on#viewer@user:u",
+		},
+		{
+			name:     "recursive_userset_deep_on_path_error",
+			model:    recursiveUsersetModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:on", "viewer", "user:u"),
+				tk("document:d", "viewer", "document:a#viewer"),
+				tk("document:a", "viewer", "document:on#viewer"),
+			},
+			errTuple: "document:on#viewer@user:u",
+		},
+		{
+			name:     "recursive_userset_on_path_error_and_on_path_valid_tuple",
+			model:    recursiveUsersetModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:on", "viewer", "user:u"),
+				tk("document:on2", "viewer", "user:u"),
+				tk("document:d", "viewer", "document:on#viewer"),
+				tk("document:d", "viewer", "document:a#viewer"),
+				tk("document:a", "viewer", "document:on2#viewer"),
+			},
+			allowed: true,
+		},
+		{
+			name:     "recursive_userset_on_path_error_and_wildcard_on_same_object",
+			model:    recursiveUsersetModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:on", "viewer", "user:u"),
+				tk("document:on", "viewer", "user:*"),
+				tk("document:d", "viewer", "document:on#viewer"),
+			},
+			allowed: true,
+		},
+		{
+			name:     "recursive_userset_off_path_error_via_other_relation_is_ignored",
+			model:    recursiveUsersetModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:x", "viewer", "user:u"),
+				tk("document:d", "viewer", "document:x#other"),
+			},
+		},
+		{
+			name:     "recursive_ttu_off_path_error_is_ignored",
+			model:    recursiveTTUModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:off", "viewer", "user:u"),
+				tk("document:d", "parent", "document:a"),
+				tk("document:a", "parent", "document:on"),
+			},
+		},
+		{
+			name:     "recursive_ttu_deep_on_path_error",
+			model:    recursiveTTUModel,
+			relation: "viewer",
+			tuples: []*openfgav1.TupleKey{
+				conditional("document:on", "viewer", "user:u"),
+				tk("document:d", "parent", "document:a"),
+				tk("document:a", "parent", "document:on"),
+			},
+			errTuple: "document:on#viewer@user:u",
+		},
+		{
+			name:     "exclusion_on_path_error_with_off_path_valid_tuple",
+			model:    exclusionModel,
+			relation: "access",
+			tuples: []*openfgav1.TupleKey{
+				tk("group:on", "viewer", "user:u"),
+				conditional("group:on", "blocked", "user:u"),
+				tk("group:z", "blocked", "user:u"),
+				tk("document:d", "access", "group:on#allowed"),
+			},
+			errTuple: "group:on#blocked@user:u",
+		},
+		{
+			name:     "exclusion_on_path_error",
+			model:    exclusionModel,
+			relation: "access",
+			tuples: []*openfgav1.TupleKey{
+				tk("group:on", "viewer", "user:u"),
+				conditional("group:on", "blocked", "user:u"),
+				tk("document:d", "access", "group:on#allowed"),
+			},
+			errTuple: "group:on#blocked@user:u",
+		},
+		{
+			name:     "exclusion_off_path_error_is_ignored",
+			model:    exclusionModel,
+			relation: "access",
+			tuples: []*openfgav1.TupleKey{
+				tk("group:on", "viewer", "user:u"),
+				conditional("group:off", "blocked", "user:u"),
+				tk("document:d", "access", "group:on#allowed"),
+			},
+			allowed: true,
+		},
+		{
+			name:     "union_off_path_error_is_ignored",
+			model:    unionModel,
+			relation: "access",
+			tuples: []*openfgav1.TupleKey{
+				conditional("group:off", "viewer", "user:u"),
+				tk("group:on", "editor", "user:u"),
+				tk("document:d", "access", "group:on#allowed"),
+			},
+			allowed: true,
+		},
+		{
+			name:     "union_on_path_error_and_on_path_valid_tuple",
+			model:    unionModel,
+			relation: "access",
+			tuples: []*openfgav1.TupleKey{
+				conditional("group:on", "viewer", "user:u"),
+				tk("group:on2", "editor", "user:u"),
+				tk("document:d", "access", "group:on#allowed"),
+				tk("document:d", "access", "group:on2#allowed"),
+			},
+			allowed: true,
+		},
+		{
+			name:     "union_on_path_error_and_valid_tuple_on_same_object",
+			model:    unionModel,
+			relation: "access",
+			tuples: []*openfgav1.TupleKey{
+				conditional("group:on", "viewer", "user:u"),
+				tk("group:on", "editor", "user:u"),
+				tk("document:d", "access", "group:on#allowed"),
+			},
+			allowed: true,
+		},
+	}
+
+	for _, test := range tests {
+		for _, strategy := range checkStrategies {
+			t.Run(test.name+"/"+strategy, func(t *testing.T) {
+				resp, err := checkWithStrategy(t, test.model, test.tuples, test.relation, nil, strategy)
+				if test.errTuple != "" {
+					require.ErrorContains(t, err, test.errTuple)
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, test.allowed, resp.GetAllowed())
+			})
+		}
+	}
+}
+
+// An object with a condition error is checked from the depth the search reached it at, and a search that ends before
+// the max depth does not fail, as with the default strategy.
+func TestCheckStrategiesAgreeOnConditionErrorNearMaxDepth(t *testing.T) {
+	const model = `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with xcond, user, document#viewer]
+		condition xcond(x: string) {
+			x == '1'
+		}`
+
+	// chain links document:d to document:1 and each document:i to document:i+1, so document:n is reached at depth n.
+	chain := func(n int, tuples ...*openfgav1.TupleKey) []*openfgav1.TupleKey {
+		tuples = append(tuples, tuple.NewTupleKey("document:d", "viewer", "document:1#viewer"))
+		for i := 2; i <= n; i++ {
+			tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("document:%d", i-1), "viewer", fmt.Sprintf("document:%d#viewer", i)))
+		}
+		return tuples
+	}
+
+	tests := []struct {
+		name    string
+		tuples  []*openfgav1.TupleKey
+		wantErr bool
+	}{
+		{
+			// The grant on document:26 is past the default max depth of 25.
+			name: "grant_past_max_depth_below_on_path_error",
+			tuples: chain(26,
+				tuple.NewTupleKeyWithCondition("document:11", "viewer", "user:u", "xcond", nil),
+				tuple.NewTupleKey("document:26", "viewer", "user:u"),
+			),
+			wantErr: true,
+		},
+		{
+			name:   "off_path_error_and_chain_ending_before_max_depth",
+			tuples: chain(24, tuple.NewTupleKeyWithCondition("document:off", "viewer", "user:u", "xcond", nil)),
+		},
+	}
+
+	for _, test := range tests {
+		for _, strategy := range checkStrategies {
+			t.Run(test.name+"/"+strategy, func(t *testing.T) {
+				resp, err := checkWithStrategy(t, model, test.tuples, "viewer", nil, strategy)
+				if test.wantErr {
+					require.Error(t, err)
+					require.Nil(t, resp)
+					return
+				}
+				require.NoError(t, err)
+				require.False(t, resp.GetAllowed())
+			})
+		}
+	}
+}
+
 type failingStringIterator struct{ err error }
 
 func (f failingStringIterator) Next(context.Context) (string, error) { return "", f.err }
@@ -210,7 +590,7 @@ func TestWeight2LeftIteratorError(t *testing.T) {
 
 		checker := NewLocalChecker()
 		defer checker.Close()
-		resp, err = checker.weight2(context.Background(), []<-chan *iterator.Msg{left}, right)
+		resp, err = checker.weight2(context.Background(), []<-chan *iterator.Msg{left}, right, newObjectSet(), nil)
 	}()
 
 	select {

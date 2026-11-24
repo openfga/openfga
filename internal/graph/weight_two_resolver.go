@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
@@ -55,7 +57,8 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 		// bla: [type#member]
 		// member: [user, user:*]
 
-		leftChans, err := produceLeftChannels(cancellableCtx, req, usersets, checkutil.BuildUsersetV2RelationFunc())
+		condErrs := newObjectSet()
+		leftChans, err := produceLeftChannels(cancellableCtx, req, usersets, checkutil.BuildUsersetV2RelationFunc(), condErrs)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +69,15 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 			}, nil
 		}
 
-		return c.weight2(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
+		relations := make(map[string]string, len(usersets))
+		for _, userset := range usersets {
+			relations[userset.GetType()] = userset.GetRelation()
+		}
+		dispatchFor := func(object string) (*ResolveCheckRequest, string) {
+			return req, relations[tuple.GetType(object)]
+		}
+
+		return c.weight2(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter), condErrs, dispatchFor)
 	}
 }
 
@@ -85,7 +96,8 @@ func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest,
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+		condErrs := newObjectSet()
+		leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation), condErrs)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +108,11 @@ func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest,
 			}, nil
 		}
 
-		return c.weight2(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
+		dispatchFor := func(string) (*ResolveCheckRequest, string) {
+			return req, computedRelation
+		}
+
+		return c.weight2(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter), condErrs, dispatchFor)
 	}
 }
 
@@ -105,7 +121,19 @@ func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest,
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (c *LocalChecker) weight2(ctx context.Context, leftChans []<-chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+//
+// The left side reads every object related to the user, including objects that are not on the right side. The
+// condErrs set holds the left side objects whose condition could not be evaluated. A match on one of them is not
+// conclusive, so the ones that are also on the right side are checked with the default strategy, from the request and
+// relation dispatchFor returns, once both sides are done. A condition error then only surfaces when its object is on
+// the path, as with the default strategy.
+func (c *LocalChecker) weight2(
+	ctx context.Context,
+	leftChans []<-chan *iterator.Msg,
+	iter storage.TupleMapper,
+	condErrs *objectSet,
+	dispatchFor func(object string) (*ResolveCheckRequest, string),
+) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "weight2")
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
@@ -162,7 +190,7 @@ ConsumerLoop:
 					lastErr = ctx.Err()
 					break ConsumerLoop
 				}
-				if leftSet.Size() == 0 {
+				if leftSet.Size() == 0 && condErrs.empty() {
 					break ConsumerLoop
 				}
 				break
@@ -182,7 +210,7 @@ ConsumerLoop:
 					// ordered merge caches), and a match from another iterator can still override lastErr.
 					break
 				}
-				if processUsersetMessage(t, leftSet, rightSet) {
+				if processUsersetMessage(t, leftSet, rightSet) && !condErrs.has(t) {
 					msg.Iter.Stop()
 					res.Allowed = true
 					lastErr = nil
@@ -203,13 +231,28 @@ ConsumerLoop:
 				lastErr = msg.err
 				continue
 			}
-			if processUsersetMessage(msg.userset, rightSet, leftSet) {
+			if processUsersetMessage(msg.userset, rightSet, leftSet) && !condErrs.has(msg.userset) {
 				res.Allowed = true
 				lastErr = nil
 				break ConsumerLoop
 			}
 		}
 	}
+
+	if !res.Allowed && !leftOpen && !rightOpen && ctx.Err() == nil {
+		unresolved := condErrs.filter(func(object string) bool { return rightSet.Contains(object) })
+		if len(unresolved) > 0 {
+			resp, err := c.checkObjectsWithDefault(ctx, unresolved, dispatchFor)
+			// Without another error, resp is the answer, including any cycle found while checking.
+			if err == nil && (resp.GetAllowed() || lastErr == nil) {
+				return resp, nil
+			}
+			if lastErr == nil {
+				lastErr = err
+			}
+		}
+	}
+
 	if lastErr != nil {
 		return nil, lastErr
 	}
@@ -222,6 +265,7 @@ func produceLeftChannels(
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
+	condErrs *objectSet,
 ) ([]<-chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
@@ -238,7 +282,7 @@ func produceLeftChannels(
 			Relation: relation,
 			User:     r.GetTupleKey().GetUser(),
 		}
-		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
+		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite(), condErrs)
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
@@ -257,15 +301,76 @@ func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg
 	return iterChan, nil
 }
 
+// objectSet is a set of objects that is safe for concurrent use.
+type objectSet struct {
+	mu      sync.RWMutex
+	objects map[string]struct{}
+}
+
+func newObjectSet() *objectSet {
+	return &objectSet{objects: make(map[string]struct{})}
+}
+
+func (s *objectSet) add(object string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.objects[object] = struct{}{}
+}
+
+func (s *objectSet) has(object string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.objects[object]
+	return ok
+}
+
+func (s *objectSet) empty() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.objects) == 0
+}
+
+// filter returns the objects for which keep returns true.
+func (s *objectSet) filter(keep func(object string) bool) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var objects []string
+	for object := range s.objects {
+		if keep(object) {
+			objects = append(objects, object)
+		}
+	}
+	return objects
+}
+
+// skipConditionErrors wraps filter so that a tuple whose condition fails to evaluate is skipped and its object is
+// added to condErrs, instead of failing the read. Fast paths read objects that may not be on the path being checked,
+// so whether the error matters is only known later. Fatal errors are returned as is.
+func skipConditionErrors(filter storage.TupleKeyConditionFilterFunc, condErrs *objectSet) storage.TupleKeyConditionFilterFunc {
+	return func(t *openfgav1.TupleKey) (bool, error) {
+		ok, err := filter(t)
+		if err != nil {
+			if fatal := (*openfgaErrors.FatalError)(nil); errors.As(err, &fatal) {
+				return false, err
+			}
+			condErrs.add(t.GetObject())
+			return false, nil
+		}
+		return ok, nil
+	}
+}
+
 // fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
-func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
+// A tuple whose condition fails to evaluate is skipped and its object is added to condErrs, see skipConditionErrors.
+func fastPathDirect(ctx context.Context, req *ResolveCheckRequest, condErrs *objectSet) (chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	tk := req.GetTupleKey()
 	objRel := tuple.ToObjectRelationString(tuple.GetType(tk.GetObject()), tk.GetRelation())
-	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil, true)
+	conditionFilter := skipConditionErrors(checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys), condErrs)
+	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil, true, conditionFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +384,7 @@ func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterat
 	return iterChan, nil
 }
 
-func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (chan *iterator.Msg, error) {
+func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, condErrs *objectSet) (chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	computedRelation := rewrite.GetComputedUserset().GetRelation()
 
@@ -292,7 +397,7 @@ func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *op
 		return nil, err
 	}
 
-	return fastPathRewrite(ctx, childRequest, rel.GetRewrite())
+	return fastPathRewrite(ctx, childRequest, rel.GetRewrite(), condErrs)
 }
 
 // add the nextItemInSliceStreams to specified batch. If batch is full, try to send batch to outChan and clear slice.
@@ -597,10 +702,10 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 // fastPathOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
-func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resolver fastPathSetHandler, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
+func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, condErrs *objectSet, resolver fastPathSetHandler, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
 	iterStreams := make([]*iterator.Stream, 0, len(children))
 	for idx, child := range children {
-		producerChan, err := fastPathRewrite(ctx, req, child)
+		producerChan, err := fastPathRewrite(ctx, req, child, condErrs)
 		if err != nil {
 			for _, stream := range iterStreams {
 				stream.Stop()
@@ -625,22 +730,24 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resol
 
 // fastPathRewrite returns a channel that will contain an unknown but finite number of elements.
 // The channel is closed at the end.
+// Objects whose condition fails to evaluate are left out of the channel and added to condErrs.
 func fastPathRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
+	condErrs *objectSet,
 ) (chan *iterator.Msg, error) {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		return fastPathDirect(ctx, req)
+		return fastPathDirect(ctx, req, condErrs)
 	case *openfgav1.Userset_ComputedUserset:
-		return fastPathComputed(ctx, req, rewrite)
+		return fastPathComputed(ctx, req, rewrite, condErrs)
 	case *openfgav1.Userset_Union:
-		return fastPathOperationSetup(ctx, req, fastPathUnion, rw.Union.GetChild()...)
+		return fastPathOperationSetup(ctx, req, condErrs, fastPathUnion, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return fastPathOperationSetup(ctx, req, fastPathIntersection, rw.Intersection.GetChild()...)
+		return fastPathOperationSetup(ctx, req, condErrs, fastPathIntersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return fastPathOperationSetup(ctx, req, fastPathDifference, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return fastPathOperationSetup(ctx, req, condErrs, fastPathDifference, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	case *openfgav1.Userset_TupleToUserset:
 		return fastPathNoop(ctx, req)
 	default:

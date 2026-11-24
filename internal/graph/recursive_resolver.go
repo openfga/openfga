@@ -45,19 +45,18 @@ var recursivePlan = &planner.PlanConfig{
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind
 	tuplesetRelation            string
+	computedRelation            string
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator, _ string) CheckHandlerFunc {
+func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, recursiveUsersets []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator, _ string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 		objectProvider := newRecursiveUsersetObjectProvider(typesys)
 
 		return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 			kind:                        storage.UsersetKind,
-			allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+			allowedUserTypeRestrictions: recursiveUsersets,
 		}, objectProvider)
 	}
 }
@@ -75,6 +74,7 @@ func (c *LocalChecker) recursiveTTU(_ context.Context, req *ResolveCheckRequest,
 		return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 			kind:             storage.TTUKind,
 			tuplesetRelation: ttu.GetTupleset().GetRelation(),
+			computedRelation: ttu.GetComputedUserset().GetRelation(),
 		}, objectProvider)
 	}
 }
@@ -114,7 +114,9 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 		usersetFromObject.Add(objectToUsersetMessage.userset)
 	}
 
-	userToUsersetMessageChan, err := objectProvider.Begin(cancellableCtx, req)
+	// condErrs holds the objects whose condition could not be evaluated on the user side.
+	condErrs := newObjectSet()
+	userToUsersetMessageChan, err := objectProvider.Begin(cancellableCtx, req, condErrs)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +138,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
-				if usersetFromUser.Size() == 0 {
+				if usersetFromUser.Size() == 0 && condErrs.empty() {
 					return res, nil
 				}
 				break
@@ -144,7 +146,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 			if userToUsersetMessage.err != nil {
 				return nil, userToUsersetMessage.err
 			}
-			if processUsersetMessage(userToUsersetMessage.userset, usersetFromUser, usersetFromObject) {
+			if processUsersetMessage(userToUsersetMessage.userset, usersetFromUser, usersetFromObject) && !condErrs.has(userToUsersetMessage.userset) {
 				res.Allowed = true
 				return res, nil
 			}
@@ -161,15 +163,14 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 			if objectToUsersetMessage.err != nil {
 				return nil, objectToUsersetMessage.err
 			}
-			if processUsersetMessage(objectToUsersetMessage.userset, usersetFromObject, usersetFromUser) {
+			if processUsersetMessage(objectToUsersetMessage.userset, usersetFromObject, usersetFromUser) && !condErrs.has(objectToUsersetMessage.userset) {
 				res.Allowed = true
 				return res, nil
 			}
 		}
 	}
 
-	newReq := req.clone()
-	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
+	return c.recursiveMatchUserUserset(ctx, req, mapping, usersetFromObject, usersetFromUser, condErrs)
 }
 
 func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (storage.TupleMapper, error) {
@@ -211,7 +212,7 @@ func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping
 	return storage.WrapIterator(mapping.kind, filteredIter), nil
 }
 
-func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, currentLevelFromObject *hashset.Set, usersetFromUser *hashset.Set) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, currentLevelFromObject *hashset.Set, usersetFromUser *hashset.Set, condErrs *objectSet) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset", trace.WithAttributes(
 		attribute.Int("first_level_size", currentLevelFromObject.Size()),
 		attribute.Int("terminal_type_size", usersetFromUser.Size()),
@@ -226,9 +227,11 @@ func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *Resol
 		// We need to wait always to avoid a goroutine leak.
 		wg.Wait()
 	}()
+	visited := &sync.Map{}
+	bfsReq := req.clone()
 	wg.Add(1)
 	go func() {
-		c.breadthFirstRecursiveMatch(cancellableCtx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
+		c.breadthFirstRecursiveMatch(cancellableCtx, bfsReq, mapping, visited, currentLevelFromObject, usersetFromUser, condErrs, checkOutcomeChan)
 		wg.Done()
 	}()
 
@@ -263,6 +266,34 @@ ConsumerLoop:
 		finalErr = ctx.Err()
 	}
 
+	if !finalResult.GetAllowed() && ctx.Err() == nil {
+		// Objects with a condition error only matter if the search reached them.
+		unresolved := condErrs.filter(func(object string) bool {
+			_, ok := visited.Load(object)
+			return ok
+		})
+		if len(unresolved) > 0 {
+			relation := req.GetTupleKey().GetRelation()
+			if mapping.kind == storage.TTUKind {
+				relation = mapping.computedRelation
+			}
+			resp, err := c.checkObjectsWithDefault(ctx, unresolved, func(object string) (*ResolveCheckRequest, string) {
+				// Check the object from the depth the search reached it at, as the default strategy would.
+				depth, _ := visited.Load(object)
+				parentReq := req.clone()
+				parentReq.GetRequestMetadata().Depth = depth.(uint32) - 1
+				return parentReq, relation
+			})
+			// Without another error, resp is the answer, including any cycle found while checking.
+			if err == nil && (resp.GetAllowed() || finalErr == nil) {
+				return resp, nil
+			}
+			if finalErr == nil {
+				finalErr = err
+			}
+		}
+	}
+
 	if finalErr != nil {
 		return nil, finalErr
 	}
@@ -283,15 +314,17 @@ ConsumerLoop:
 // group:2#member@group:a#member
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
-func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, visitedUserset *sync.Map, currentUsersetLevel *hashset.Set, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
-	req.GetRequestMetadata().Depth++
-	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
-		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: ErrResolutionDepthExceeded}, checkOutcomeChan)
+// The visitedUserset map holds the depth each object searched was reached at.
+// Objects in condErrs are not counted as a match, but are still searched through.
+func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, visitedUserset *sync.Map, currentUsersetLevel *hashset.Set, usersetFromUser *hashset.Set, condErrs *objectSet, checkOutcomeChan chan checkOutcome) {
+	if currentUsersetLevel.Size() == 0 || ctx.Err() != nil {
+		// nothing else to search for or upstream cancellation
 		close(checkOutcomeChan)
 		return
 	}
-	if currentUsersetLevel.Size() == 0 || ctx.Err() != nil {
-		// nothing else to search for or upstream cancellation
+	req.GetRequestMetadata().Depth++
+	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
+		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: ErrResolutionDepthExceeded}, checkOutcomeChan)
 		close(checkOutcomeChan)
 		return
 	}
@@ -304,7 +337,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 
 	for _, usersetInterface := range currentUsersetLevel.Values() {
 		userset := usersetInterface.(string)
-		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
+		_, visited := visitedUserset.LoadOrStore(userset, req.GetRequestMetadata().Depth)
 		if visited {
 			continue
 		}
@@ -326,7 +359,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 					return nil
 				}
 				userset := usersetMsg.userset
-				if usersetFromUser.Contains(userset) {
+				if usersetFromUser.Contains(userset) && !condErrs.has(userset) {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
 						Allowed: true,
 					}}, checkOutcomeChan)
@@ -346,5 +379,5 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		close(checkOutcomeChan)
 		return
 	}
-	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
+	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, condErrs, checkOutcomeChan)
 }

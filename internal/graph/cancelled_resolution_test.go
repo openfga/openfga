@@ -171,7 +171,7 @@ func TestWeight2ReportsCancellationWhenCancelledAfterNonMatchingItems(t *testing
 			tuple.NewTupleKey("document:1", "viewer", "group:2#member"),
 		}))
 
-		resp, err := NewLocalChecker().weight2(ctx, []<-chan *iterator.Msg{leftChan}, rightIter)
+		resp, err := NewLocalChecker().weight2(ctx, []<-chan *iterator.Msg{leftChan}, rightIter, newObjectSet(), nil)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 	})
@@ -210,7 +210,7 @@ func TestWeight2ReportsCancellationWhenCancelledAfterNonMatchingItems(t *testing
 			tuple.NewTupleKey("document:1", "viewer", "group:2#member"),
 		}))
 
-		resp, err := NewLocalChecker().weight2(ctx, []<-chan *iterator.Msg{leftChan}, rightIter)
+		resp, err := NewLocalChecker().weight2(ctx, []<-chan *iterator.Msg{leftChan}, rightIter, newObjectSet(), nil)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 	})
@@ -258,7 +258,7 @@ func TestWeight2ReportsCancellationWhenCancelledAfterNonMatchingItems(t *testing
 			tuple.NewTupleKey("document:1", "viewer", "group:2#member"),
 		}))
 
-		resp, err := NewLocalChecker().weight2(ctx, []<-chan *iterator.Msg{leftChan}, rightIter)
+		resp, err := NewLocalChecker().weight2(ctx, []<-chan *iterator.Msg{leftChan}, rightIter, newObjectSet(), nil)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 	})
@@ -305,7 +305,7 @@ type staticObjectProvider struct {
 
 func (p *staticObjectProvider) End() {}
 
-func (p *staticObjectProvider) Begin(context.Context, *ResolveCheckRequest) (<-chan usersetMessage, error) {
+func (p *staticObjectProvider) Begin(context.Context, *ResolveCheckRequest, *objectSet) (<-chan usersetMessage, error) {
 	return p.ch, nil
 }
 

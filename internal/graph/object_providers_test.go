@@ -76,7 +76,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				_, err = c.Begin(context.Background(), invalidReq)
+				_, err = c.Begin(context.Background(), invalidReq, newObjectSet())
 				require.ErrorContains(t, err, "is an undefined object type")
 			})
 
@@ -88,7 +88,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				require.NoError(t, err)
 
 				actualMessages := make([]usersetMessage, 0)
@@ -113,7 +113,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				require.NoError(t, err)
 
 				actualMessages := make([]usersetMessage, 0, 3)
@@ -138,7 +138,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				_, err = c.Begin(ctx, req)
+				_, err = c.Begin(ctx, req, newObjectSet())
 				require.ErrorIs(t, err, mockError)
 			})
 
@@ -157,7 +157,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				require.NoError(t, err)
 
 				actualMessages := make([]usersetMessage, 0, 1)
@@ -183,7 +183,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))
 				cancel()
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				if err != nil {
 					require.ErrorIs(t, err, context.Canceled)
 				} else {
@@ -243,7 +243,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				require.NoError(t, err)
 
 				actualMessages := make([]usersetMessage, 0)
@@ -268,7 +268,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				require.NoError(t, err)
 
 				actualMessages := make([]usersetMessage, 0, 3)
@@ -293,7 +293,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				_, err = c.Begin(ctx, req)
+				_, err = c.Begin(ctx, req, newObjectSet())
 				require.ErrorIs(t, err, mockError)
 			})
 
@@ -312,7 +312,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				require.NoError(t, err)
 
 				actualMessages := make([]usersetMessage, 0, 1)
@@ -339,7 +339,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))
 				cancel()
-				channel, err := c.Begin(ctx, req)
+				channel, err := c.Begin(ctx, req, newObjectSet())
 				// the context cancellation might not be propagated before the creation of ReadStartingWithUser, so the cancellation might happen before yielding tuples.
 				if err != nil {
 					require.ErrorIs(t, err, context.Canceled)

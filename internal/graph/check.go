@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
@@ -689,7 +690,11 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		// if the type#relation is resolvable recursively, then it can only be resolved recursively
 		if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
+			// Usersets other than objectType#relation cannot lead to the user type here, so they are not read.
+			recursiveUsersets := slices.DeleteFunc(slices.Clone(directlyRelatedUsersetTypes), func(ref *openfgav1.RelationReference) bool {
+				return ref.GetType() != objectType || ref.GetRelation() != relation
+			})
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, recursiveUsersets)
 			if err != nil {
 				return nil, err
 			}
@@ -703,9 +708,9 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			selectedStrategy := req.GetSelectedStrategy()
 			switch selectedStrategy {
 			case defaultResolver:
-				return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter, selectedStrategy)(ctx)
+				return c.defaultUserset(ctx, req, recursiveUsersets, iter, selectedStrategy)(ctx)
 			case recursiveResolver:
-				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter, selectedStrategy)(ctx)
+				return c.recursiveUserset(ctx, req, recursiveUsersets, iter, selectedStrategy)(ctx)
 			default: // in case is not selected
 			}
 
@@ -720,7 +725,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			if plan.Name == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter, plan.Name))(ctx)
+			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, recursiveUsersets, iter, plan.Name))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc

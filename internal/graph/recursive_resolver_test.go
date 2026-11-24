@@ -1115,7 +1115,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 				tuplesetRelation: "parent",
 			}
 			checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
-			checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, checkOutcomeChan)
+			checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, newObjectSet(), checkOutcomeChan)
 
 			result := false
 			for outcome := range checkOutcomeChan {
@@ -1182,7 +1182,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			tuplesetRelation: "parent",
 		}
 		checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
-		checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, hashset.New("group:1", "group:2", "group:3"), hashset.New(), checkOutcomeChan)
+		checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, hashset.New("group:1", "group:2", "group:3"), hashset.New(), newObjectSet(), checkOutcomeChan)
 	})
 }
 
