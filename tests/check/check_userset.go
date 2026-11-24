@@ -2030,4 +2030,96 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
+	{
+		Name: "usersets_and_butnot_userset_base",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:abub_1", Relation: "userset", User: "directs-user:abub_1#direct"},
+			{Object: "directs-user:abub_1", Relation: "direct", User: "user:abub_a"},
+			{Object: "directs-user:abub_1", Relation: "direct", User: "user:abub_b"},
+			{Object: "directs-user:abub_1", Relation: "direct", User: "user:abub_c"},
+			{Object: "usersets-user:abub_1", Relation: "direct_4", User: "user:abub_b"},
+			{Object: "usersets-user:abub_1", Relation: "direct_3", User: "user:abub_a"},
+			{Object: "usersets-user:abub_1", Relation: "direct_3", User: "user:abub_b"},
+			{Object: "usersets-user:abub_1", Relation: "direct_3", User: "user:abub_d"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abub_1", Relation: "and_butnot_userset_base", User: "user:abub_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "excluded",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abub_1", Relation: "and_butnot_userset_base", User: "user:abub_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "not_in_intersection",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abub_1", Relation: "and_butnot_userset_base", User: "user:abub_c"},
+				Expectation: false,
+			},
+			{
+				Name:        "not_in_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abub_1", Relation: "and_butnot_userset_base", User: "user:abub_d"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "usersets_and_butnot_userset_sub",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:abus_1", Relation: "userset", User: "directs-user:abus_1#direct"},
+			{Object: "directs-user:abus_1", Relation: "direct", User: "user:abus_b"},
+			{Object: "usersets-user:abus_1", Relation: "direct_3", User: "user:abus_a"},
+			{Object: "usersets-user:abus_1", Relation: "direct_3", User: "user:abus_b"},
+			{Object: "usersets-user:abus_1", Relation: "direct_4", User: "user:abus_a"},
+			{Object: "usersets-user:abus_1", Relation: "direct_4", User: "user:abus_b"},
+			{Object: "usersets-user:abus_1", Relation: "direct_4", User: "user:abus_c"},
+			{Object: "usersets-user:abus_1", Relation: "direct_3", User: "user:abus_d"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abus_1", Relation: "and_butnot_userset_sub", User: "user:abus_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "excluded_by_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abus_1", Relation: "and_butnot_userset_sub", User: "user:abus_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "not_in_intersection",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abus_1", Relation: "and_butnot_userset_sub", User: "user:abus_c"},
+				Expectation: false,
+			},
+			{
+				Name:        "not_in_base",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abus_1", Relation: "and_butnot_userset_sub", User: "user:abus_d"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "usersets_and_butnot_userset_cond_base",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:abucb_1", Relation: "userset_cond", User: "directs-user:abucb_1#direct", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "directs-user:abucb_1", Relation: "direct", User: "user:abucb_a"},
+			{Object: "usersets-user:abucb_1", Relation: "direct_3", User: "user:abucb_a"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "allowed_valid_cond",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abucb_1", Relation: "and_butnot_userset_cond_base", User: "user:abucb_a"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "allowed_invalid_cond",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:abucb_1", Relation: "and_butnot_userset_cond_base", User: "user:abucb_a"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("0")}},
+				Expectation: false,
+			},
+		},
+	},
 }
