@@ -1280,4 +1280,288 @@ var ttuCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
+	{
+		Name: "recursive_ttu_and",
+		Tuples: []*openfgav1.TupleKey{
+			// the intersection applies at every level, so every level must have allowed_directs_user
+			{Object: "ttus:rta_a_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_a"},
+			{Object: "ttus:rta_a_1", Relation: "ttu_parent", User: "ttus:rta_a_0"},
+			{Object: "ttus:rta_a_2", Relation: "ttu_parent", User: "ttus:rta_a_1"},
+			{Object: "ttus:rta_a_3", Relation: "ttu_parent", User: "ttus:rta_a_2"},
+			{Object: "ttus:rta_a_0", Relation: "allowed_directs_user", User: "directs-user:rta_user_a"},
+			{Object: "ttus:rta_a_1", Relation: "allowed_directs_user", User: "directs-user:rta_user_a"},
+			{Object: "ttus:rta_a_2", Relation: "allowed_directs_user", User: "directs-user:rta_user_a"},
+			{Object: "ttus:rta_a_3", Relation: "allowed_directs_user", User: "directs-user:rta_user_a"},
+
+			// middle level is missing allowed_directs_user
+			{Object: "ttus:rta_b_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_b"},
+			{Object: "ttus:rta_b_1", Relation: "ttu_parent", User: "ttus:rta_b_0"},
+			{Object: "ttus:rta_b_2", Relation: "ttu_parent", User: "ttus:rta_b_1"},
+			{Object: "ttus:rta_b_3", Relation: "ttu_parent", User: "ttus:rta_b_2"},
+			{Object: "ttus:rta_b_0", Relation: "allowed_directs_user", User: "directs-user:rta_user_b"},
+			{Object: "ttus:rta_b_1", Relation: "allowed_directs_user", User: "directs-user:rta_user_b"},
+			{Object: "ttus:rta_b_3", Relation: "allowed_directs_user", User: "directs-user:rta_user_b"},
+
+			// top level is missing allowed_directs_user
+			{Object: "ttus:rta_c_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_c"},
+			{Object: "ttus:rta_c_1", Relation: "ttu_parent", User: "ttus:rta_c_0"},
+			{Object: "ttus:rta_c_0", Relation: "allowed_directs_user", User: "directs-user:rta_user_c"},
+
+			// two parents, only one has allowed_directs_user on every level
+			{Object: "ttus:rta_d_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_d"},
+			{Object: "ttus:rta_d_bad", Relation: "ttu_parent", User: "ttus:rta_d_0"},
+			{Object: "ttus:rta_d_ok", Relation: "ttu_parent", User: "ttus:rta_d_0"},
+			{Object: "ttus:rta_d_top", Relation: "ttu_parent", User: "ttus:rta_d_bad"},
+			{Object: "ttus:rta_d_top", Relation: "ttu_parent", User: "ttus:rta_d_ok"},
+			{Object: "ttus:rta_d_0", Relation: "allowed_directs_user", User: "directs-user:rta_user_d"},
+			{Object: "ttus:rta_d_ok", Relation: "allowed_directs_user", User: "directs-user:rta_user_d"},
+			{Object: "ttus:rta_d_top", Relation: "allowed_directs_user", User: "directs-user:rta_user_d"},
+
+			// allowed_directs_user without recursive_ttu_and
+			{Object: "ttus:rta_e_0", Relation: "allowed_directs_user", User: "directs-user:rta_user_e"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "all_levels_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_a_3", Relation: "recursive_ttu_and", User: "directs-user:rta_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "all_levels_allowed_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_a_1", Relation: "recursive_ttu_and", User: "directs-user:rta_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "all_levels_allowed_direct",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_a_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "middle_level_not_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_b_3", Relation: "recursive_ttu_and", User: "directs-user:rta_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_not_allowed_at_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_b_2", Relation: "recursive_ttu_and", User: "directs-user:rta_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_not_allowed_below_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_b_1", Relation: "recursive_ttu_and", User: "directs-user:rta_user_b"},
+				Expectation: true,
+			},
+			{
+				Name:        "top_level_not_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_c_1", Relation: "recursive_ttu_and", User: "directs-user:rta_user_c"},
+				Expectation: false,
+			},
+			{
+				Name:        "top_level_not_allowed_direct",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_c_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_c"},
+				Expectation: true,
+			},
+			{
+				Name:        "one_parent_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_d_top", Relation: "recursive_ttu_and", User: "directs-user:rta_user_d"},
+				Expectation: true,
+			},
+			{
+				Name:        "parent_not_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_d_bad", Relation: "recursive_ttu_and", User: "directs-user:rta_user_d"},
+				Expectation: false,
+			},
+			{
+				Name:        "allowed_only",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_e_0", Relation: "recursive_ttu_and", User: "directs-user:rta_user_e"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rta_a_3", Relation: "recursive_ttu_and", User: "directs-user:rta_user_invalid"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "recursive_ttu_butnot",
+		Tuples: []*openfgav1.TupleKey{
+			// the exclusion applies at every level, so blocked_directs_user on any level removes the path
+			{Object: "ttus:rtb_a_0", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_a"},
+			{Object: "ttus:rtb_a_1", Relation: "ttu_parent", User: "ttus:rtb_a_0"},
+			{Object: "ttus:rtb_a_2", Relation: "ttu_parent", User: "ttus:rtb_a_1"},
+
+			// middle level blocks the user
+			{Object: "ttus:rtb_b_0", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_b"},
+			{Object: "ttus:rtb_b_1", Relation: "ttu_parent", User: "ttus:rtb_b_0"},
+			{Object: "ttus:rtb_b_2", Relation: "ttu_parent", User: "ttus:rtb_b_1"},
+			{Object: "ttus:rtb_b_3", Relation: "ttu_parent", User: "ttus:rtb_b_2"},
+			{Object: "ttus:rtb_b_2", Relation: "blocked_directs_user", User: "directs-user:rtb_user_b"},
+
+			// top level blocks the user
+			{Object: "ttus:rtb_c_0", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_c"},
+			{Object: "ttus:rtb_c_1", Relation: "ttu_parent", User: "ttus:rtb_c_0"},
+			{Object: "ttus:rtb_c_1", Relation: "blocked_directs_user", User: "directs-user:rtb_user_c"},
+
+			// level with the direct assignment blocks the user
+			{Object: "ttus:rtb_f_0", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_f"},
+			{Object: "ttus:rtb_f_1", Relation: "ttu_parent", User: "ttus:rtb_f_0"},
+			{Object: "ttus:rtb_f_0", Relation: "blocked_directs_user", User: "directs-user:rtb_user_f"},
+
+			// two parents, only one blocks the user
+			{Object: "ttus:rtb_d_0", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_d"},
+			{Object: "ttus:rtb_d_bad", Relation: "ttu_parent", User: "ttus:rtb_d_0"},
+			{Object: "ttus:rtb_d_ok", Relation: "ttu_parent", User: "ttus:rtb_d_0"},
+			{Object: "ttus:rtb_d_top", Relation: "ttu_parent", User: "ttus:rtb_d_bad"},
+			{Object: "ttus:rtb_d_top", Relation: "ttu_parent", User: "ttus:rtb_d_ok"},
+			{Object: "ttus:rtb_d_bad", Relation: "blocked_directs_user", User: "directs-user:rtb_user_d"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "no_level_blocked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_a_2", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "middle_level_blocked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_b_3", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_blocked_at_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_b_2", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_blocked_below_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_b_1", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_b"},
+				Expectation: true,
+			},
+			{
+				Name:        "top_level_blocked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_c_1", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_c"},
+				Expectation: false,
+			},
+			{
+				Name:        "top_level_blocked_direct",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_c_0", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_c"},
+				Expectation: true,
+			},
+			{
+				Name:        "direct_level_blocked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_f_1", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_f"},
+				Expectation: false,
+			},
+			{
+				Name:        "one_parent_blocked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_d_top", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_d"},
+				Expectation: true,
+			},
+			{
+				Name:        "parent_blocked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_d_bad", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_d"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtb_a_2", Relation: "recursive_ttu_butnot", User: "directs-user:rtb_user_invalid"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "recursive_ttu_referenced",
+		Tuples: []*openfgav1.TupleKey{
+			// user_1, user_2 and user_4 reach ttus:rtr_2 through two levels of ttu_parent
+			{Object: "ttus:rtr_0", Relation: "recursive_ttu", User: "directs-user:rtr_user_1"},
+			{Object: "ttus:rtr_0", Relation: "recursive_ttu", User: "directs-user:rtr_user_2"},
+			{Object: "ttus:rtr_0", Relation: "recursive_ttu", User: "directs-user:rtr_user_4"},
+			{Object: "ttus:rtr_1", Relation: "ttu_parent", User: "ttus:rtr_0"},
+			{Object: "ttus:rtr_2", Relation: "ttu_parent", User: "ttus:rtr_1"},
+
+			// allowed_directs_user and blocked_directs_user are only checked on the queried object
+			{Object: "ttus:rtr_2", Relation: "allowed_directs_user", User: "directs-user:rtr_user_1"},
+			{Object: "ttus:rtr_2", Relation: "allowed_directs_user", User: "directs-user:rtr_user_3"},
+			{Object: "ttus:rtr_2", Relation: "allowed_directs_user", User: "directs-user:rtr_user_4"},
+			{Object: "ttus:rtr_2", Relation: "blocked_directs_user", User: "directs-user:rtr_user_2"},
+			{Object: "ttus:rtr_1", Relation: "blocked_directs_user", User: "directs-user:rtr_user_4"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "and_recursive_ttu_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "and_recursive_ttu_user_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "and_recursive_ttu_user_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_3"},
+				Expectation: false,
+			},
+			{
+				Name:        "and_recursive_ttu_user_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_4"},
+				Expectation: true,
+			},
+			{
+				Name:        "and_recursive_ttu_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "and_recursive_ttu", User: "directs-user:rtr_user_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_recursive_ttu_base_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_base", User: "directs-user:rtr_user_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "butnot_recursive_ttu_base_user_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_base", User: "directs-user:rtr_user_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_recursive_ttu_base_user_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_base", User: "directs-user:rtr_user_3"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_recursive_ttu_base_user_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_base", User: "directs-user:rtr_user_4"},
+				Expectation: true,
+			},
+			{
+				Name:        "butnot_recursive_ttu_base_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_base", User: "directs-user:rtr_user_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_recursive_ttu_subtract_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_1"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_recursive_ttu_subtract_user_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_recursive_ttu_subtract_user_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_3"},
+				Expectation: true,
+			},
+			{
+				Name:        "butnot_recursive_ttu_subtract_user_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_4"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_recursive_ttu_subtract_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:rtr_2", Relation: "butnot_recursive_ttu_subtract", User: "directs-user:rtr_user_invalid"},
+				Expectation: false,
+			},
+		},
+	},
 }

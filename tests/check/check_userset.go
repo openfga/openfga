@@ -2030,4 +2030,381 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
+	{
+		Name: "usersets_userset_recursive_and",
+		Tuples: []*openfgav1.TupleKey{
+			// the intersection applies at every level, so every level must have direct_3
+			{Object: "usersets-user:ura_a_0", Relation: "userset_recursive_and", User: "usersets-user:ura_a_1#userset_recursive_and"},
+			{Object: "usersets-user:ura_a_1", Relation: "userset_recursive_and", User: "usersets-user:ura_a_2#userset_recursive_and"},
+			{Object: "usersets-user:ura_a_2", Relation: "userset_recursive_and", User: "usersets-user:ura_a_3#userset_recursive_and"},
+			{Object: "usersets-user:ura_a_3", Relation: "userset_recursive_and", User: "user:ura_user_a"},
+			{Object: "usersets-user:ura_a_0", Relation: "direct_3", User: "user:ura_user_a"},
+			{Object: "usersets-user:ura_a_1", Relation: "direct_3", User: "user:ura_user_a"},
+			{Object: "usersets-user:ura_a_2", Relation: "direct_3", User: "user:ura_user_a"},
+			{Object: "usersets-user:ura_a_3", Relation: "direct_3", User: "user:ura_user_a"},
+
+			// middle level is missing direct_3
+			{Object: "usersets-user:ura_b_0", Relation: "userset_recursive_and", User: "usersets-user:ura_b_1#userset_recursive_and"},
+			{Object: "usersets-user:ura_b_1", Relation: "userset_recursive_and", User: "usersets-user:ura_b_2#userset_recursive_and"},
+			{Object: "usersets-user:ura_b_2", Relation: "userset_recursive_and", User: "usersets-user:ura_b_3#userset_recursive_and"},
+			{Object: "usersets-user:ura_b_3", Relation: "userset_recursive_and", User: "user:ura_user_b"},
+			{Object: "usersets-user:ura_b_0", Relation: "direct_3", User: "user:ura_user_b"},
+			{Object: "usersets-user:ura_b_2", Relation: "direct_3", User: "user:ura_user_b"},
+			{Object: "usersets-user:ura_b_3", Relation: "direct_3", User: "user:ura_user_b"},
+
+			// top level is missing direct_3
+			{Object: "usersets-user:ura_c_0", Relation: "userset_recursive_and", User: "usersets-user:ura_c_1#userset_recursive_and"},
+			{Object: "usersets-user:ura_c_1", Relation: "userset_recursive_and", User: "user:ura_user_c"},
+			{Object: "usersets-user:ura_c_1", Relation: "direct_3", User: "user:ura_user_c"},
+
+			// direct assignment
+			{Object: "usersets-user:ura_d", Relation: "userset_recursive_and", User: "user:ura_user_d"},
+			{Object: "usersets-user:ura_d", Relation: "direct_3", User: "user:ura_user_d"},
+			{Object: "usersets-user:ura_d", Relation: "direct_3", User: "user:ura_user_d_only"},
+
+			// two paths, only one has direct_3 on every level
+			{Object: "usersets-user:ura_e_0", Relation: "userset_recursive_and", User: "usersets-user:ura_e_1#userset_recursive_and"},
+			{Object: "usersets-user:ura_e_0", Relation: "userset_recursive_and", User: "usersets-user:ura_e_2#userset_recursive_and"},
+			{Object: "usersets-user:ura_e_1", Relation: "userset_recursive_and", User: "user:ura_user_e"},
+			{Object: "usersets-user:ura_e_2", Relation: "userset_recursive_and", User: "user:ura_user_e"},
+			{Object: "usersets-user:ura_e_0", Relation: "direct_3", User: "user:ura_user_e"},
+			{Object: "usersets-user:ura_e_2", Relation: "direct_3", User: "user:ura_user_e"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "all_levels_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_0", Relation: "userset_recursive_and", User: "user:ura_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "all_levels_allowed_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_2", Relation: "userset_recursive_and", User: "user:ura_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "all_levels_allowed_leaf",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_3", Relation: "userset_recursive_and", User: "user:ura_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "middle_level_not_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_b_0", Relation: "userset_recursive_and", User: "user:ura_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_not_allowed_at_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_b_1", Relation: "userset_recursive_and", User: "user:ura_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_not_allowed_below_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_b_2", Relation: "userset_recursive_and", User: "user:ura_user_b"},
+				Expectation: true,
+			},
+			{
+				Name:        "top_level_not_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_c_0", Relation: "userset_recursive_and", User: "user:ura_user_c"},
+				Expectation: false,
+			},
+			{
+				Name:        "top_level_not_allowed_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_c_1", Relation: "userset_recursive_and", User: "user:ura_user_c"},
+				Expectation: true,
+			},
+			{
+				Name:        "direct",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_d", Relation: "userset_recursive_and", User: "user:ura_user_d"},
+				Expectation: true,
+			},
+			{
+				Name:        "direct_3_only",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_d", Relation: "userset_recursive_and", User: "user:ura_user_d_only"},
+				Expectation: false,
+			},
+			{
+				Name:        "one_path_allowed",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_e_0", Relation: "userset_recursive_and", User: "user:ura_user_e"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_0", Relation: "userset_recursive_and", User: "user:ura_user_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "userset_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:ura_a_0", Relation: "userset_recursive_and", User: "usersets-user:ura_a_1#userset_recursive_and"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "usersets_userset_recursive_butnot",
+		Tuples: []*openfgav1.TupleKey{
+			// the exclusion applies at every level, so direct_4 on any level removes the path
+			{Object: "usersets-user:urb_a_0", Relation: "userset_recursive_butnot", User: "usersets-user:urb_a_1#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_a_1", Relation: "userset_recursive_butnot", User: "usersets-user:urb_a_2#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_a_2", Relation: "userset_recursive_butnot", User: "user:urb_user_a"},
+
+			// middle level excludes the user
+			{Object: "usersets-user:urb_b_0", Relation: "userset_recursive_butnot", User: "usersets-user:urb_b_1#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_b_1", Relation: "userset_recursive_butnot", User: "usersets-user:urb_b_2#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_b_2", Relation: "userset_recursive_butnot", User: "user:urb_user_b"},
+			{Object: "usersets-user:urb_b_1", Relation: "direct_4", User: "user:urb_user_b"},
+
+			// top level excludes the user
+			{Object: "usersets-user:urb_c_0", Relation: "userset_recursive_butnot", User: "usersets-user:urb_c_1#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_c_1", Relation: "userset_recursive_butnot", User: "user:urb_user_c"},
+			{Object: "usersets-user:urb_c_0", Relation: "direct_4", User: "user:urb_user_c"},
+
+			// leaf level excludes the user
+			{Object: "usersets-user:urb_d_0", Relation: "userset_recursive_butnot", User: "usersets-user:urb_d_1#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_d_1", Relation: "userset_recursive_butnot", User: "user:urb_user_d"},
+			{Object: "usersets-user:urb_d_1", Relation: "direct_4", User: "user:urb_user_d"},
+
+			// two paths, only one excludes the user
+			{Object: "usersets-user:urb_e_0", Relation: "userset_recursive_butnot", User: "usersets-user:urb_e_1#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_e_0", Relation: "userset_recursive_butnot", User: "usersets-user:urb_e_2#userset_recursive_butnot"},
+			{Object: "usersets-user:urb_e_1", Relation: "userset_recursive_butnot", User: "user:urb_user_e"},
+			{Object: "usersets-user:urb_e_2", Relation: "userset_recursive_butnot", User: "user:urb_user_e"},
+			{Object: "usersets-user:urb_e_1", Relation: "direct_4", User: "user:urb_user_e"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "no_level_excluded",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_a_0", Relation: "userset_recursive_butnot", User: "user:urb_user_a"},
+				Expectation: true,
+			},
+			{
+				Name:        "middle_level_excluded",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_b_0", Relation: "userset_recursive_butnot", User: "user:urb_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_excluded_at_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_b_1", Relation: "userset_recursive_butnot", User: "user:urb_user_b"},
+				Expectation: false,
+			},
+			{
+				Name:        "middle_level_excluded_below_middle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_b_2", Relation: "userset_recursive_butnot", User: "user:urb_user_b"},
+				Expectation: true,
+			},
+			{
+				Name:        "top_level_excluded",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_c_0", Relation: "userset_recursive_butnot", User: "user:urb_user_c"},
+				Expectation: false,
+			},
+			{
+				Name:        "top_level_excluded_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_c_1", Relation: "userset_recursive_butnot", User: "user:urb_user_c"},
+				Expectation: true,
+			},
+			{
+				Name:        "leaf_level_excluded",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_d_0", Relation: "userset_recursive_butnot", User: "user:urb_user_d"},
+				Expectation: false,
+			},
+			{
+				Name:        "one_path_excluded",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_e_0", Relation: "userset_recursive_butnot", User: "user:urb_user_e"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_a_0", Relation: "userset_recursive_butnot", User: "user:urb_user_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "userset_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urb_a_0", Relation: "userset_recursive_butnot", User: "usersets-user:urb_a_1#userset_recursive_butnot"},
+				Expectation: true,
+			},
+		},
+	},
+	{
+		Name: "usersets_userset_recursive_referenced",
+		Tuples: []*openfgav1.TupleKey{
+			// user_1, user_2 and user_4 reach usersets-user:urr_2 through two levels of userset_recursive
+			{Object: "usersets-user:urr_2", Relation: "userset_recursive", User: "usersets-user:urr_1#userset_recursive"},
+			{Object: "usersets-user:urr_1", Relation: "userset_recursive", User: "usersets-user:urr_0#userset_recursive"},
+			{Object: "usersets-user:urr_0", Relation: "userset_recursive", User: "user:urr_user_1"},
+			{Object: "usersets-user:urr_0", Relation: "userset_recursive", User: "user:urr_user_2"},
+			{Object: "usersets-user:urr_0", Relation: "userset_recursive", User: "user:urr_user_4"},
+
+			// direct_3 and direct_4 are only checked on the queried object
+			{Object: "usersets-user:urr_2", Relation: "direct_3", User: "user:urr_user_1"},
+			{Object: "usersets-user:urr_2", Relation: "direct_3", User: "user:urr_user_3"},
+			{Object: "usersets-user:urr_2", Relation: "direct_3", User: "user:urr_user_4"},
+			{Object: "usersets-user:urr_2", Relation: "direct_4", User: "user:urr_user_2"},
+			{Object: "usersets-user:urr_1", Relation: "direct_4", User: "user:urr_user_4"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "and_userset_recursive_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "and_userset_recursive_user_2",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "and_userset_recursive_user_3",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_3"},
+				Expectation: false,
+			},
+			{
+				Name:        "and_userset_recursive_user_4",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_4"},
+				Expectation: true,
+			},
+			{
+				Name:        "and_userset_recursive_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "and_userset_recursive", User: "user:urr_user_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_userset_recursive_base_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_base", User: "user:urr_user_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "butnot_userset_recursive_base_user_2",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_base", User: "user:urr_user_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_userset_recursive_base_user_3",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_base", User: "user:urr_user_3"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_userset_recursive_base_user_4",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_base", User: "user:urr_user_4"},
+				Expectation: true,
+			},
+			{
+				Name:        "butnot_userset_recursive_base_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_base", User: "user:urr_user_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_userset_recursive_subtract_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_1"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_userset_recursive_subtract_user_2",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_userset_recursive_subtract_user_3",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_3"},
+				Expectation: true,
+			},
+			{
+				Name:        "butnot_userset_recursive_subtract_user_4",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_4"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_userset_recursive_subtract_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:urr_2", Relation: "butnot_userset_recursive_subtract", User: "user:urr_user_invalid"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "usersets_tuple_cycle2_referenced",
+		Tuples: []*openfgav1.TupleKey{
+			// user_1 and user_2 exist so no cycle
+			{Object: "directs-user:utcr_1", Relation: "tuple_cycle2", User: "user:utcr_user_1"},
+			{Object: "directs-user:utcr_1", Relation: "tuple_cycle2", User: "user:utcr_user_2"},
+			{Object: "ttus:utcr_1", Relation: "direct_parent", User: "directs-user:utcr_1"},
+			{Object: "usersets-user:utcr_1", Relation: "tuple_cycle2", User: "ttus:utcr_1#tuple_cycle2"},
+			{Object: "directs-user:utcr_1", Relation: "tuple_cycle2", User: "usersets-user:utcr_1#tuple_cycle2"},
+			{Object: "usersets-user:utcr_1", Relation: "direct_3", User: "user:utcr_user_1"},
+			{Object: "usersets-user:utcr_1", Relation: "direct_3", User: "user:utcr_user_2"},
+			{Object: "usersets-user:utcr_1", Relation: "direct_3", User: "user:utcr_user_5"},
+			{Object: "usersets-user:utcr_1", Relation: "direct_4", User: "user:utcr_user_2"},
+
+			// missing user leads to a cycle
+			{Object: "directs-user:utcr_4", Relation: "tuple_cycle2", User: "usersets-user:utcr_4#tuple_cycle2"},
+			{Object: "ttus:utcr_4", Relation: "direct_parent", User: "directs-user:utcr_4"},
+			{Object: "usersets-user:utcr_4", Relation: "tuple_cycle2", User: "ttus:utcr_4#tuple_cycle2"},
+			{Object: "usersets-user:utcr_4", Relation: "direct_3", User: "user:utcr_user_1"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "and_tuple_cycle2_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "and_tuple_cycle2", User: "user:utcr_user_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "and_tuple_cycle2_user_2",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "and_tuple_cycle2", User: "user:utcr_user_2"},
+				Expectation: true,
+			},
+			{
+				Name:        "and_tuple_cycle2_user_not_in_cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "and_tuple_cycle2", User: "user:utcr_user_5"},
+				Expectation: false,
+			},
+			{
+				Name:        "and_tuple_cycle2_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "and_tuple_cycle2", User: "user:utcr_user_3"},
+				Expectation: false,
+			},
+			{
+				Name:        "and_tuple_cycle2_cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_4", Relation: "and_tuple_cycle2", User: "user:utcr_user_1"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_tuple_cycle2_base_user_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_base", User: "user:utcr_user_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "butnot_tuple_cycle2_base_excluded",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_base", User: "user:utcr_user_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_tuple_cycle2_base_user_not_in_cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_base", User: "user:utcr_user_5"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_tuple_cycle2_base_cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_4", Relation: "butnot_tuple_cycle2_base", User: "user:utcr_user_1"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_tuple_cycle2_subtract_user_in_cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_subtract", User: "user:utcr_user_1"},
+				Expectation: false,
+			},
+			// a cycle on the subtracted side fails closed, even though the user is not a member of it
+			{
+				Name:        "butnot_tuple_cycle2_subtract_user_not_in_cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_subtract", User: "user:utcr_user_5"},
+				Expectation: false,
+			},
+			{
+				Name:        "butnot_tuple_cycle2_subtract_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_1", Relation: "butnot_tuple_cycle2_subtract", User: "user:utcr_user_3"},
+				Expectation: false,
+			},
+			// a cycle on the subtracted side fails closed, even though the user is not a member of it
+			{
+				Name:        "butnot_tuple_cycle2_subtract_cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utcr_4", Relation: "butnot_tuple_cycle2_subtract", User: "user:utcr_user_1"},
+				Expectation: false,
+			},
+		},
+	},
 }

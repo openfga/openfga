@@ -1143,6 +1143,14 @@ type usersets-user
     define tuple_cycle3: [directs-user#compute_tuple_cycle3]
     define userset_mix_public: [directs-user#direct, directs-user:*, user, user:*]
     define or_userset_mix_public: [user, user:*] or userset_mix_public
+    define userset_recursive_and: [user, usersets-user#userset_recursive_and] and direct_3
+    define userset_recursive_butnot: [user, usersets-user#userset_recursive_butnot] but not direct_4
+    define and_userset_recursive: userset_recursive and direct_3
+    define butnot_userset_recursive_base: userset_recursive but not direct_4
+    define butnot_userset_recursive_subtract: direct_3 but not userset_recursive
+    define and_tuple_cycle2: tuple_cycle2 and direct_3
+    define butnot_tuple_cycle2_base: tuple_cycle2 but not direct_4
+    define butnot_tuple_cycle2_subtract: direct_3 but not tuple_cycle2
 type ttus
   relations
     define direct: [user] or direct_2
@@ -1189,6 +1197,13 @@ type ttus
     define recursive_ttu_public_alg: [directs-user, directs-user:*] or recursive_ttu_public_alg from ttu_parent or direct_wild
     define recursive_ttu_alg_cond: [directs-user with xcond] or recursive_ttu_alg_cond from ttu_parent_cond or alg_combined_cond
     define mixed_use: [directs-user] or mixed_use from mixed_ttu_parent
+    define allowed_directs_user: [directs-user]
+    define blocked_directs_user: [directs-user]
+    define recursive_ttu_and: ([directs-user] or recursive_ttu_and from ttu_parent) and allowed_directs_user
+    define recursive_ttu_butnot: ([directs-user] or recursive_ttu_butnot from ttu_parent) but not blocked_directs_user
+    define and_recursive_ttu: recursive_ttu and allowed_directs_user
+    define butnot_recursive_ttu_base: recursive_ttu but not blocked_directs_user
+    define butnot_recursive_ttu_subtract: allowed_directs_user but not recursive_ttu
 
 type complexity3
   relations
