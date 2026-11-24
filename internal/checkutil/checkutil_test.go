@@ -461,7 +461,7 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, expectedFilter, expectedOpts).Times(1).Return(nil, nil)
 			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
 			require.NoError(t, err)
-			_, _ = IteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs, true)
+			_, _ = IteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs, true, BuildTupleKeyConditionFilter(context.Background(), req.GetContext(), ts))
 		})
 	}
 }

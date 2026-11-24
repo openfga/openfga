@@ -16,9 +16,10 @@ import (
 
 // objectProvider is an interface that abstracts the building of a channel that holds object IDs or usersets.
 // It must close the channel when there are no more results.
+// Objects whose condition fails to evaluate are not sent on the channel. They are added to condErrs instead.
 type objectProvider interface {
 	End()
-	Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error)
+	Begin(ctx context.Context, req *ResolveCheckRequest, condErrs *objectSet) (<-chan usersetMessage, error)
 }
 
 type recursiveTTUObjectProvider struct {
@@ -42,7 +43,7 @@ func (c *recursiveTTUObjectProvider) End() {
 	}
 }
 
-func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error) {
+func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest, condErrs *objectSet) (<-chan usersetMessage, error) {
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 
 	possibleParents, err := c.ts.GetDirectlyRelatedUserTypes(objectType, c.tuplesetRelation)
@@ -50,7 +51,7 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 		return nil, err
 	}
 
-	leftChans, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
+	leftChans, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation), condErrs)
 	if err != nil {
 		return nil, err
 	}
@@ -78,11 +79,11 @@ func (c *recursiveUsersetObjectProvider) End() {
 	}
 }
 
-func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error) {
+func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest, condErrs *objectSet) (<-chan usersetMessage, error) {
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 	reference := []*openfgav1.RelationReference{{Type: objectType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: req.GetTupleKey().GetRelation()}}}
 
-	leftChans, err := produceLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc())
+	leftChans, err := produceLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc(), condErrs)
 	if err != nil {
 		return nil, err
 	}

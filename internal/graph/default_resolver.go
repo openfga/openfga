@@ -187,6 +187,34 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 	}
 }
 
+// checkObjectsWithDefault checks objects with the default strategy and returns allowed if any of them is. For each
+// object, dispatchFor returns the request to dispatch its check from and the relation to check on it. Fast paths use it
+// to resolve objects they could not decide on their own.
+func (c *LocalChecker) checkObjectsWithDefault(ctx context.Context, objects []string, dispatchFor func(object string) (*ResolveCheckRequest, string)) (*ResolveCheckResponse, error) {
+	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
+
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
+	pool.Go(func(ctx context.Context) error {
+		defer close(dispatchChan)
+		for _, object := range objects {
+			parentReq, relation := dispatchFor(object)
+			tk := tuple.NewTupleKey(object, relation, parentReq.GetTupleKey().GetUser())
+			if !concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: parentReq, tk: tk, strategy: defaultResolver}}, dispatchChan) {
+				return nil
+			}
+		}
+		return nil
+	})
+
+	return c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
+}
+
 func (c *LocalChecker) consumeDispatches(ctx context.Context, limit int, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)

@@ -93,14 +93,16 @@ func IteratorReadUsersetTuples(ctx context.Context,
 
 // IteratorReadStartingFromUser returns storage iterator for
 // user with request's type and relation with specified objectIDs as
-// filter.
+// filter. Tuples are kept or skipped by conditionFilter, usually built with
+// BuildTupleKeyConditionFilter.
 func IteratorReadStartingFromUser(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
 	req resolveCheckRequest,
 	objectRel string,
 	objectIDs storage.SortedSet,
-	sortContextualTuples bool) (storage.TupleKeyIterator, error) {
+	sortContextualTuples bool,
+	conditionFilter storage.TupleKeyConditionFilterFunc) (storage.TupleKeyIterator, error) {
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
@@ -135,7 +137,7 @@ func IteratorReadStartingFromUser(ctx context.Context,
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
 			validation.FilterInvalidTuples(typesys),
 		),
-		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+		conditionFilter,
 	), nil
 }
 

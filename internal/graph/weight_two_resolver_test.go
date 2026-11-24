@@ -18,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/utils/apimethod"
@@ -112,7 +113,7 @@ func TestFastPathDirect(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		})
+		}, newObjectSet())
 		require.NoError(t, err)
 		msg, ok := <-c
 		require.True(t, ok)
@@ -159,9 +160,41 @@ func TestFastPathDirect(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		})
+		}, newObjectSet())
 		require.Error(t, err)
 	})
+}
+
+func TestSkipConditionErrors(t *testing.T) {
+	condErr := errors.New("missing context parameters")
+	fatalErr := &openfgaErrors.FatalError{Cause: errors.New("cost limit exceeded")}
+	filter := func(tk *openfgav1.TupleKey) (bool, error) {
+		switch tk.GetObject() {
+		case "document:err":
+			return false, condErr
+		case "document:fatal":
+			return false, fatalErr
+		}
+		return true, nil
+	}
+
+	condErrs := newObjectSet()
+	skip := skipConditionErrors(filter, condErrs)
+
+	ok, err := skip(tuple.NewTupleKey("document:ok", "viewer", "user:u"))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	ok, err = skip(tuple.NewTupleKey("document:err", "viewer", "user:u"))
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	_, err = skip(tuple.NewTupleKey("document:fatal", "viewer", "user:u"))
+	require.ErrorIs(t, err, fatalErr)
+
+	require.True(t, condErrs.has("document:err"))
+	require.False(t, condErrs.has("document:ok"))
+	require.False(t, condErrs.has("document:fatal"))
 }
 
 func TestFastPathComputed(t *testing.T) {
@@ -189,7 +222,7 @@ func TestFastPathComputed(t *testing.T) {
 		_, err = fastPathComputed(ctx, &ResolveCheckRequest{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, &openfgav1.Userset{Userset: &openfgav1.Userset_ComputedUserset{ComputedUserset: &openfgav1.ObjectRelation{Relation: "fake"}}})
+		}, &openfgav1.Userset{Userset: &openfgav1.Userset_ComputedUserset{ComputedUserset: &openfgav1.ObjectRelation{Relation: "fake"}}}, newObjectSet())
 
 		require.Error(t, err)
 	})
@@ -1321,7 +1354,7 @@ func TestFastPathOperationSetup(t *testing.T) {
 			panic(errMessage)
 		}
 
-		outChan, err := fastPathOperationSetup(ctx, &ResolveCheckRequest{}, resolver)
+		outChan, err := fastPathOperationSetup(ctx, &ResolveCheckRequest{}, newObjectSet(), resolver)
 
 		require.NoError(t, err)
 
@@ -1353,7 +1386,7 @@ func TestWeight2(t *testing.T) {
 		)
 
 		requireNoSpin(t, func() {
-			result, checkErr = NewLocalChecker().weight2(context.Background(), []<-chan *iterator.Msg{leftChan}, right)
+			result, checkErr = NewLocalChecker().weight2(context.Background(), []<-chan *iterator.Msg{leftChan}, right, newObjectSet(), nil)
 		})
 		require.NoError(t, checkErr)
 		require.False(t, result.GetAllowed())
