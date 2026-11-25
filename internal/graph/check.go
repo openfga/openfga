@@ -165,21 +165,26 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
 	out := make(chan checkOutcome, len(handlers))
-
-	for _, handler := range handlers {
-		h := handler
-		pool.Go(func(ctx context.Context) error {
-			out <- runHandler(ctx, h)
-			return nil
-		})
+	if len(handlers) <= concurrencyLimit {
+		// Operands are within concurrencyLimit: one goroutine each.
+		// All oucomes are in buffer and reader count them, no send or close needed.
+		for _, handler := range handlers {
+			go func() { out <- runHandler(cancellableCtx, handler) }()
+		}
+	} else {
+		pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
+		for _, handler := range handlers {
+			pool.Go(func(ctx context.Context) error {
+				out <- runHandler(ctx, handler)
+				return nil
+			})
+		}
+		go func() {
+			_ = pool.Wait()
+			close(out)
+		}()
 	}
-
-	go func() {
-		_ = pool.Wait()
-		close(out)
-	}()
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{Allowed: false}

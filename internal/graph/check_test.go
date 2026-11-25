@@ -1772,6 +1772,21 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 	})
 }
 
+func TestUnionWithinConcurrencyLimit(t *testing.T) {
+	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
+		return &ResolveCheckResponse{Allowed: false}, nil
+	}
+	handlers := []CheckHandlerFunc{falseHandler, falseHandler, falseHandler}
+
+	allocs := func(concurrencyLimit int) float64 {
+		return testing.AllocsPerRun(100, func() {
+			_, _ = union(context.Background(), concurrencyLimit, handlers...)
+		})
+	}
+	withinLimit, overLimit := allocs(len(handlers)), allocs(len(handlers)-1)
+	require.Less(t, withinLimit, overLimit/2, "union inside the concurrency limit should avoid worker pool allocation")
+}
+
 func TestResolveCheckCallsPathExists(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
