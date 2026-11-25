@@ -1044,6 +1044,160 @@ var matrix = individualTest{
 				},
 			},
 		},
+		{
+			Name: "and_butnot_wild_base",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:abwb_1", Relation: "direct_wild", User: "user:*"},
+				{Object: "directs-user:abwb_1", Relation: "direct", User: "user:abwb_excluded"},
+				{Object: "directs-user:abwb_1", Relation: "direct_and_direct_wild", User: "user:abwb_allowed"},
+				{Object: "directs-user:abwb_1", Relation: "direct_and_direct_wild", User: "user:abwb_excluded"},
+				// no wildcard on the base side
+				{Object: "directs-user:abwb_2", Relation: "direct_and_direct_wild", User: "user:abwb_allowed"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "allowed",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abwb_1", Relation: "and_butnot_wild_base", User: "user:abwb_allowed"},
+					Expectation: true,
+				},
+				{
+					Name:        "excluded",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abwb_1", Relation: "and_butnot_wild_base", User: "user:abwb_excluded"},
+					Expectation: false,
+				},
+				{
+					Name:        "not_in_intersection",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abwb_1", Relation: "and_butnot_wild_base", User: "user:abwb_other"},
+					Expectation: false,
+				},
+				{
+					Name:        "no_wildcard",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abwb_2", Relation: "and_butnot_wild_base", User: "user:abwb_allowed"},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "and_butnot_wild_sub",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:abws_1", Relation: "direct_and_direct_wild", User: "user:abws_1"},
+				{Object: "directs-user:abws_1", Relation: "direct", User: "user:abws_1"},
+				{Object: "directs-user:abws_1", Relation: "direct_and_direct_wild", User: "user:abws_not_in_base"},
+				{Object: "directs-user:abws_1", Relation: "direct", User: "user:abws_not_in_intersection"},
+				// the wildcard on the subtracted side excludes every user
+				{Object: "directs-user:abws_2", Relation: "direct_and_direct_wild", User: "user:abws_1"},
+				{Object: "directs-user:abws_2", Relation: "direct", User: "user:abws_1"},
+				{Object: "directs-user:abws_2", Relation: "direct_wild", User: "user:*"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "allowed",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abws_1", Relation: "and_butnot_wild_sub", User: "user:abws_1"},
+					Expectation: true,
+				},
+				{
+					Name:        "not_in_base",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abws_1", Relation: "and_butnot_wild_sub", User: "user:abws_not_in_base"},
+					Expectation: false,
+				},
+				{
+					Name:        "not_in_intersection",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abws_1", Relation: "and_butnot_wild_sub", User: "user:abws_not_in_intersection"},
+					Expectation: false,
+				},
+				{
+					Name:        "wildcard_excluded",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abws_2", Relation: "and_butnot_wild_sub", User: "user:abws_1"},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "and_butnot_wild_cond_base",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:abwcb_1", Relation: "direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:abwcb_1", Relation: "direct_and_direct_wild", User: "user:abwcb_allowed"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "allowed_valid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abwcb_1", Relation: "and_butnot_wild_cond_base", User: "user:abwcb_allowed"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "allowed_invalid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:abwcb_1", Relation: "and_butnot_wild_cond_base", User: "user:abwcb_allowed"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("0")}},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "and_wild_cond",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:awc_1", Relation: "direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:awc_1", Relation: "direct_and_direct_wild", User: "user:awc_1"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:awc_1", Relation: "and_wild_cond", User: "user:awc_1"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:awc_1", Relation: "and_wild_cond", User: "user:awc_1"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("0")}},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "and_nested_butnot",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:anb_1", Relation: "direct_wild", User: "user:*"},
+				{Object: "directs-user:anb_1", Relation: "direct_and_direct_wild", User: "user:anb_a"},
+				{Object: "directs-user:anb_1", Relation: "direct_and_direct_wild", User: "user:anb_b"},
+				{Object: "directs-user:anb_1", Relation: "direct_and_direct_wild", User: "user:anb_c"},
+				// b is in direct but not direct_and_direct_cond, so the inner exclusion removes b
+				{Object: "directs-user:anb_1", Relation: "direct", User: "user:anb_b"},
+				// c is in both, so the inner exclusion is false and c is not removed
+				{Object: "directs-user:anb_1", Relation: "direct", User: "user:anb_c"},
+				{Object: "directs-user:anb_1", Relation: "direct_and_direct_cond", User: "user:anb_c"},
+
+				// no wildcard on the base side
+				{Object: "directs-user:anb_2", Relation: "direct_and_direct_wild", User: "user:anb_a"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "not_in_inner_base",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:anb_1", Relation: "and_nested_butnot", User: "user:anb_a"},
+					Expectation: true,
+				},
+				{
+					Name:        "inner_exclusion_true",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:anb_1", Relation: "and_nested_butnot", User: "user:anb_b"},
+					Expectation: false,
+				},
+				{
+					Name:        "inner_exclusion_false",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:anb_1", Relation: "and_nested_butnot", User: "user:anb_c"},
+					Expectation: true,
+				},
+				{
+					Name:        "not_in_intersection",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:anb_1", Relation: "and_nested_butnot", User: "user:anb_d"},
+					Expectation: false,
+				},
+				{
+					Name:        "no_wildcard",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:anb_2", Relation: "and_nested_butnot", User: "user:anb_a"},
+					Expectation: false,
+				},
+			},
+		},
 	},
 }
 
@@ -1081,6 +1235,11 @@ type directs-user
     define tuple_cycle3: [user, complexity3#cycle_nested]
     define compute_tuple_cycle3: tuple_cycle3
     define mixed_use: or_computed_no_cond
+    define and_butnot_wild_base: (direct_wild but not direct) and direct_and_direct_wild
+    define and_butnot_wild_sub: direct_and_direct_wild and (direct but not direct_wild)
+    define and_butnot_wild_cond_base: (direct_wild_cond but not direct) and direct_and_direct_wild
+    define and_wild_cond: direct_wild_cond and direct_and_direct_wild
+    define and_nested_butnot: direct_and_direct_wild and (direct_wild but not (direct but not direct_and_direct_cond))
 type directs-employee
   relations
     define direct: [employee]
@@ -1143,6 +1302,9 @@ type usersets-user
     define tuple_cycle3: [directs-user#compute_tuple_cycle3]
     define userset_mix_public: [directs-user#direct, directs-user:*, user, user:*]
     define or_userset_mix_public: [user, user:*] or userset_mix_public
+    define and_butnot_userset_base: (userset but not direct_4) and direct_3
+    define and_butnot_userset_sub: direct_3 and (direct_4 but not userset)
+    define and_butnot_userset_cond_base: (userset_cond but not direct_4) and direct_3
 type ttus
   relations
     define direct: [user] or direct_2
@@ -1189,6 +1351,14 @@ type ttus
     define recursive_ttu_public_alg: [directs-user, directs-user:*] or recursive_ttu_public_alg from ttu_parent or direct_wild
     define recursive_ttu_alg_cond: [directs-user with xcond] or recursive_ttu_alg_cond from ttu_parent_cond or alg_combined_cond
     define mixed_use: [directs-user] or mixed_use from mixed_ttu_parent
+    define allowed_user_employee: [user, employee]
+    define blocked_user_employee: [user, employee]
+    define and_butnot_ttu_base: (direct from direct_parent but not blocked_user_employee) and allowed_user_employee
+    define and_butnot_ttu_mult_base: (direct_pa_direct_ch but not blocked_user_employee) and allowed_user_employee
+    define and_butnot_ttu_mult_sub: allowed_user_employee and (blocked_user_employee but not direct_pa_direct_ch)
+    define and_butnot_ttu_cond_mult_base: (direct_cond_pa_direct_ch but not blocked_user_employee) and allowed_user_employee
+    define butnot_ttu_mult_sub: allowed_user_employee but not direct_pa_direct_ch
+    define butnot_ttu_cond_mult_sub: allowed_user_employee but not direct_cond_pa_direct_ch
 
 type complexity3
   relations

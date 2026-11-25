@@ -441,6 +441,10 @@ var ttus = []matrixTest{
 				Context:     invalidConditionContext,
 				Expectation: nil,
 			},
+			// TODO: v1 and v2 (weighted graph) Check disagree on ttus:cycle_3 for this user. v1 returns false, while v2
+			// returns a non-terminal error, so the server falls back to v1: "failed to evaluate relationship condition:
+			// 'xcond' - tuple 'ttus:cycle_3#mult_parent_types@directs-employee:cycle_3' is missing context parameters '[x]'".
+			// This is not listed in pkg/server/commands/v2breaking, but it is a behavior change.
 			{
 				Request: &openfgav1.ListObjectsRequest{
 					User:     "user:ttu_charlie",
