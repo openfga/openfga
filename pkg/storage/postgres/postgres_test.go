@@ -163,6 +163,61 @@ func TestWriteWithSimpleProtocol(t *testing.T) {
 	require.Equal(t, "document:2", tk.GetKey().GetObject())
 }
 
+// TestWritePreCheckIsNotACachedPreparedStatement is a regression test for
+// https://github.com/openfga/openfga/issues/3444. When the SELECT ... FOR UPDATE that Write
+// runs before writing is a cached prepared statement, Postgres can switch it to a generic
+// plan after five executions, and that plan can read every tuple of a userset that is
+// used in many tuples. The statement must not stay prepared on the connection.
+func TestWritePreCheckIsNotACachedPreparedStatement(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+
+	poolCfg, err := parseConfig(uri, false, cfg)
+	require.NoError(t, err)
+	require.Equal(t, pgx.QueryExecModeCacheStatement, poolCfg.ConnConfig.DefaultQueryExecMode)
+	// One connection, so every Write and the check below use the same session.
+	poolCfg.MaxConns = 1
+	poolCfg.MinConns = 0
+
+	primaryDB, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
+	require.NoError(t, err)
+
+	ds, err := NewWithDB(primaryDB, nil, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	// More than the five executions after which Postgres may choose a generic plan.
+	for i := range 7 {
+		writes := []*openfgav1.TupleKey{
+			{Object: fmt.Sprintf("document:%d", i), Relation: "viewer", User: "group:eng#member"},
+			{Object: fmt.Sprintf("folder:%d", i), Relation: "viewer", User: "user:alice"},
+		}
+		require.NoError(t, ds.Write(ctx, storeID, nil, writes))
+	}
+
+	// Deleting and writing again still sees the existing rows.
+	deletes := []*openfgav1.TupleKeyWithoutCondition{
+		{Object: "document:0", Relation: "viewer", User: "group:eng#member"},
+	}
+	require.NoError(t, ds.Write(ctx, storeID, deletes, nil))
+	err = ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+		{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
+	})
+	require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+
+	var prepared int
+	err = primaryDB.QueryRow(ctx,
+		`SELECT count(*) FROM pg_prepared_statements WHERE statement LIKE '%FROM tuple WHERE store = $1 AND (object_type, object_id, relation, _user, user_type) IN%' AND statement NOT LIKE '%pg_prepared_statements%'`,
+	).Scan(&prepared)
+	require.NoError(t, err)
+	require.Zero(t, prepared, "the Write pre-check must not be a cached prepared statement")
+}
+
 func TestPostgresDatastoreStartup(t *testing.T) {
 	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 	primaryURI := primaryDatastore.GetConnectionURI(true)

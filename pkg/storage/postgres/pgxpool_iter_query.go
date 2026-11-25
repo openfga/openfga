@@ -34,11 +34,16 @@ func (c *pgxConnConnection) Close() error {
 
 type pgxTxConnection struct {
 	tx pgx.Tx
+	// unprepared runs queries with pgx.QueryExecModeExec instead of the connection's default mode.
+	unprepared bool
 }
 
 var _ sqlcommon.Connection = (*pgxTxConnection)(nil)
 
 func (c *pgxTxConnection) Query(ctx context.Context, sql string, args ...any) (sqlcommon.Rows, error) {
+	if c.unprepared {
+		args = append([]any{pgx.QueryExecModeExec}, args...)
+	}
 	rows, err := c.tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
@@ -66,12 +71,14 @@ func (c *pgxPoolConnector) Connect(ctx context.Context) (sqlcommon.Connection, e
 
 type pgxTxConnector struct {
 	tx pgx.Tx
+	// unprepared runs queries with pgx.QueryExecModeExec instead of the connection's default mode.
+	unprepared bool
 }
 
 var _ sqlcommon.Connector = (*pgxTxConnector)(nil)
 
 func (c *pgxTxConnector) Connect(ctx context.Context) (sqlcommon.Connection, error) {
-	return &pgxTxConnection{tx: c.tx}, nil
+	return &pgxTxConnection{tx: c.tx, unprepared: c.unprepared}, nil
 }
 
 // PgxExec interface allows pgx Exec functionality.

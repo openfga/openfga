@@ -1424,6 +1424,16 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 		Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...)).
 		Suffix("FOR UPDATE")
 
+	if c, ok := connector.(*pgxTxConnector); ok && usesStatementCache(c.tx) {
+		// A cached prepared statement lets Postgres switch to a generic plan after five
+		// executions. Without the parameter values the planner cannot use the partial
+		// indexes on user_type, and it may pick idx_user_lookup, which reads every tuple of
+		// a userset that is used in many tuples. Running this statement unprepared makes
+		// Postgres plan it with the actual values every time.
+		// See https://github.com/openfga/openfga/issues/3444.
+		connector = &pgxTxConnector{tx: c.tx, unprepared: true}
+	}
+
 	poolGetRows, err := sqlcommon.NewRowGetter(connector, sb)
 	if err != nil {
 		return HandleSQLError(err)
@@ -1441,4 +1451,19 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 		existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
 	}
 	return nil
+}
+
+// usesStatementCache reports whether the transaction runs queries as cached prepared
+// statements, which is pgx's default. Other modes that the operator configured, such as
+// simple_protocol for PgBouncer, are left as they are.
+func usesStatementCache(tx pgx.Tx) bool {
+	if tx == nil || tx.Conn() == nil {
+		return false
+	}
+	switch tx.Conn().Config().DefaultQueryExecMode {
+	case pgx.QueryExecModeCacheStatement, pgx.QueryExecModeCacheDescribe:
+		return true
+	default:
+		return false
+	}
 }
