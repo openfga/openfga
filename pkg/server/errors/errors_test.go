@@ -81,6 +81,10 @@ func TestHandleErrors(t *testing.T) {
 }
 
 func TestHandleTupleValidateError(t *testing.T) {
+	invalidTupleError := tuple.InvalidTupleError{
+		Cause:    fmt.Errorf("invalid tuple error"),
+		TupleKey: tuple.NewCheckRequestTupleKey("object:x", "relation_y", "user:z"),
+	}
 	invalidConditionTupleError := tuple.InvalidConditionalTupleError{
 		Cause:    fmt.Errorf("foo"),
 		TupleKey: tuple.NewTupleKey("doc:x", "viewer", "user:z"),
@@ -91,15 +95,19 @@ func TestHandleTupleValidateError(t *testing.T) {
 		expectedTranslatedError error
 	}{
 		`invalid_tuple_error`: {
+			validateError: &invalidTupleError,
+			expectedTranslatedError: status.Error(
+				codes.Code(openfgav1.ErrorCode_invalid_tuple),
+				invalidTupleError.Error(),
+			),
+		},
+		`invalid_tuple_error_without_a_tuple`: {
 			validateError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("invalid tuple error"),
-				TupleKey: tuple.NewCheckRequestTupleKey("object:x", "relation_y", "user:z"),
+				Cause: fmt.Errorf("invalid tuple error"),
 			},
 			expectedTranslatedError: status.Error(
 				codes.Code(openfgav1.ErrorCode_invalid_tuple),
-				fmt.Sprintf("Invalid tuple '%s'. Reason: %s",
-					tuple.NewCheckRequestTupleKey("object:x", "relation_y", "user:z"),
-					fmt.Errorf("invalid tuple error")),
+				"Invalid tuple. Reason: invalid tuple error",
 			),
 		},
 		`type_not_found`: {

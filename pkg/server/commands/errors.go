@@ -97,15 +97,18 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
+	// Contextual tuple validation returns a tuple.InvalidTupleError wrapped in an
+	// InvalidTupleError. Only the inner one carries the tuple that was rejected, so it has
+	// to be matched first, otherwise the caller never learns which tuple failed.
+	var errInvalidTuple *tuple.InvalidTupleError
+	if errors.As(err, &errInvalidTuple) {
+		return serverErrors.HandleTupleValidateError(errInvalidTuple)
+	}
+
 	var invalidTupleDeprecate *InvalidTupleError
 	if errors.As(err, &invalidTupleDeprecate) {
 		tupleError := tuple.InvalidTupleError{Cause: err}
 		return serverErrors.HandleTupleValidateError(&tupleError)
-	}
-
-	var errInvalidTuple *tuple.InvalidTupleError
-	if errors.As(err, &errInvalidTuple) {
-		return serverErrors.HandleTupleValidateError(errInvalidTuple)
 	}
 
 	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
