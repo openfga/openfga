@@ -147,9 +147,17 @@ func HandleError(public string, err error) error {
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) { //nolint:errorlint
 	case *tuple.InvalidTupleError:
+		// Not every caller has the rejected tuple to hand, so keep the reason on its own
+		// rather than formatting a nil key into the message.
+		if t.TupleKey == nil {
+			return status.Error(
+				codes.Code(openfgav1.ErrorCode_invalid_tuple),
+				fmt.Sprintf("Invalid tuple. Reason: %s", t.Cause.Error()),
+			)
+		}
 		return status.Error(
 			codes.Code(openfgav1.ErrorCode_invalid_tuple),
-			fmt.Sprintf("Invalid tuple '%s'. Reason: %s", t.TupleKey, t.Cause.Error()),
+			t.Error(),
 		)
 	case *tuple.TypeNotFoundError:
 		return TypeNotFound(t.TypeName)

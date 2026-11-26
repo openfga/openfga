@@ -889,6 +889,53 @@ func TestCheck_DoesNotFallBackOnInvalidContextualTuple(t *testing.T) {
 	require.False(t, ok, "dispatch_count must not be set — invalid contextual tuple must not fall back to v1")
 }
 
+func TestContextualTupleErrorNamesTheRejectedTuple(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	s, baseReq := setupCheckServer(t, "", nil)
+	bad := tuple.NewTupleKey("document:1", "no_such_relation", "user:bob")
+	contextual := &openfgav1.ContextualTupleKeys{TupleKeys: []*openfgav1.TupleKey{bad}}
+	expected := "rpc error: code = Code(2027) desc = Invalid tuple 'document:1#no_such_relation@user:bob'. " +
+		"Reason: relation 'document#no_such_relation' not found"
+	ctx := context.Background()
+
+	t.Run("check", func(t *testing.T) {
+		_, err := s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              baseReq.GetStoreId(),
+			AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+			TupleKey:             baseReq.GetTupleKey(),
+			ContextualTuples:     contextual,
+		})
+		require.EqualError(t, err, expected)
+	})
+
+	t.Run("list_objects", func(t *testing.T) {
+		_, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:              baseReq.GetStoreId(),
+			AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:alice",
+			ContextualTuples:     contextual,
+		})
+		require.EqualError(t, err, expected)
+	})
+
+	t.Run("list_users", func(t *testing.T) {
+		_, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              baseReq.GetStoreId(),
+			AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+			Object:               &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:             "viewer",
+			UserFilters:          []*openfgav1.UserTypeFilter{{Type: "user"}},
+			ContextualTuples:     contextual.GetTupleKeys(),
+		})
+		require.EqualError(t, err, expected)
+	})
+}
+
 func TestBreakingChangeReason(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
