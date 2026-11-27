@@ -1878,7 +1878,7 @@ func WriteTuplesWithMaxTuplesPerWrite(datastore storage.OpenFGADatastore, ctx co
 func ReadChangesWithHorizonAfterDelayedWrite(datastore, stalled storage.OpenFGADatastore, waiting func() bool, release func()) func(t *testing.T) {
 	return func(t *testing.T) {
 		release = sync.OnceFunc(release)
-		t.Cleanup(release)
+		defer release()
 
 		ctx := context.Background()
 		storeID := ulid.Make().String()
