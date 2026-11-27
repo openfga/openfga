@@ -1,6 +1,9 @@
 package migrate_test
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -8,6 +11,7 @@ import (
 
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/pkg/storage/migrate"
+	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 )
 
 func TestMigrateCommandRollbacks(t *testing.T) {
@@ -43,4 +47,24 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A username without a password must leave the password to PGPASSFILE, as
+// `openfga run` does (e.g. a short-lived token refreshed in a passfile).
+func TestMigratePostgresReadsPassfile(t *testing.T) {
+	container := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	passfile := filepath.Join(t.TempDir(), ".pgpass")
+	line := fmt.Sprintf("*:*:*:%s:%s\n", container.GetUsername(), container.GetPassword())
+	require.NoError(t, os.WriteFile(passfile, []byte(line), 0o600))
+	t.Setenv("PGPASSFILE", passfile)
+
+	err := migrate.RunMigrations(migrate.MigrationConfig{
+		Engine:      "postgres",
+		URI:         container.GetConnectionURI(false),
+		Username:    container.GetUsername(),
+		Timeout:     5 * time.Second,
+		PingTimeout: 1 * time.Second,
+	})
+	require.NoError(t, err)
 }
