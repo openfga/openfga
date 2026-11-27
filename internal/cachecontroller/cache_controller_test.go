@@ -307,8 +307,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 				gomock.InOrder(
 					cache.EXPECT().Get(storage.ChangelogCacheKey("0")).Return(nil),
 					datastore.EXPECT().ReadChanges(gomock.Any(), "0", gomock.Any(), expectedReadChangesOpts).Times(1).
-						DoAndReturn(func(_ context.Context, _ string, _ storage.ReadChangesFilter, _ storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
-							time.Sleep(3 * time.Second)
+						DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadChangesFilter, _ storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
+							<-ctx.Done()
 							return nil, "", storage.ErrCollision
 						}),
 				)
