@@ -48,6 +48,56 @@ func TestMySQLDatastore(t *testing.T) {
 	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
 
+func TestReadChangesWithHorizonAfterDelayedWrite(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stalled, err := New(uri, sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(1)))
+	require.NoError(t, err)
+	defer stalled.Close()
+
+	conn, err := stalled.primaryDB.Conn(context.Background())
+	require.NoError(t, err)
+
+	waiting := func() bool { return stalled.primaryDB.Stats().WaitCount > 0 }
+	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, waiting, func() { _ = conn.Close() })(t)
+}
+
+func TestReadChangesWithHorizonFiltersOnULID(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	ds, err := New(testDatastore.GetConnectionURI(true), sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+	store := ulid.Make().String()
+	write := func(object string, now time.Time) {
+		err := sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"), ds.primaryDB, store,
+			sqlcommon.WriteData{
+				Writes: []*openfgav1.TupleKey{tupleUtils.NewTupleKey(object, "viewer", "user:jon")},
+				Opts:   storage.NewTupleWriteOptions(),
+				Now:    now,
+			})
+		require.NoError(t, err)
+	}
+	write("doc:now", time.Now())
+	// The ULID time of doc:ahead stays inside the horizon after its inserted_at has passed it.
+	write("doc:ahead", time.Now().Add(time.Hour))
+	time.Sleep(300 * time.Millisecond)
+
+	filter := storage.ReadChangesFilter{HorizonOffset: 200 * time.Millisecond}
+	opts := storage.ReadChangesOptions{Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, "")}
+	changes, _, err := ds.ReadChanges(ctx, store, filter, opts)
+	require.NoError(t, err)
+	require.Len(t, changes, 1)
+	require.Equal(t, "doc:now", changes[0].GetTupleKey().GetObject())
+}
+
 func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 

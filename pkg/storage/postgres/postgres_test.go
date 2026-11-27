@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -111,6 +112,79 @@ func TestPostgresDatastore(t *testing.T) {
 
 	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
+
+func TestReadChangesWithHorizonAfterDelayedWrite(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	cfg := sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(1))
+	poolConfig, err := parseConfig(uri, false, cfg)
+	require.NoError(t, err)
+	acquires := &acquireCounter{}
+	poolConfig.ConnConfig.Tracer = acquires
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	require.NoError(t, err)
+	stalled, err := NewWithDB(pool, nil, cfg)
+	require.NoError(t, err)
+	defer stalled.Close()
+
+	conn, err := stalled.primaryDB.Acquire(context.Background())
+	require.NoError(t, err)
+
+	held := acquires.count.Load()
+	waiting := func() bool { return acquires.count.Load() > held }
+	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, waiting, conn.Release)(t)
+}
+
+func TestReadChangesWithHorizonFiltersOnULID(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	ds, err := New(testDatastore.GetConnectionURI(true), sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+	store := ulid.Make().String()
+	write := func(object string, now time.Time) {
+		err := ds.write(ctx, store, nil, []*openfgav1.TupleKey{tupleUtils.NewTupleKey(object, "viewer", "user:jon")},
+			storage.TupleWriteOptions{}, now)
+		require.NoError(t, err)
+	}
+	write("doc:now", time.Now())
+	// The ULID time of doc:ahead stays inside the horizon after its inserted_at has passed it.
+	write("doc:ahead", time.Now().Add(time.Hour))
+	time.Sleep(300 * time.Millisecond)
+
+	filter := storage.ReadChangesFilter{HorizonOffset: 200 * time.Millisecond}
+	opts := storage.ReadChangesOptions{Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, "")}
+	changes, _, err := ds.ReadChanges(ctx, store, filter, opts)
+	require.NoError(t, err)
+	require.Len(t, changes, 1)
+	require.Equal(t, "doc:now", changes[0].GetTupleKey().GetObject())
+}
+
+// acquireCounter counts the calls of Acquire on a pool.
+type acquireCounter struct {
+	count atomic.Int64
+}
+
+func (a *acquireCounter) TraceAcquireStart(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireStartData) context.Context {
+	a.count.Add(1)
+	return ctx
+}
+
+func (a *acquireCounter) TraceAcquireEnd(context.Context, *pgxpool.Pool, pgxpool.TraceAcquireEndData) {
+}
+
+func (a *acquireCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
+	return ctx
+}
+
+func (a *acquireCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
 // TestWriteWithSimpleProtocol is a regression test for a bug where Write operations
 // failed with "invalid input syntax for type integer: TUPLE_OPERATION_WRITE" (SQLSTATE 22P02)
