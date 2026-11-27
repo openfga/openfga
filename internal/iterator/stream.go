@@ -150,9 +150,30 @@ func (s *Stream) fetchSource(ctx context.Context) error {
 		if i.Err != nil {
 			return i.Err
 		}
-		s.buffer = i.Iter
+		// A datastore iterator holds a connection until it is read to the end. Reading it here releases
+		// the connection before the next stream acquires one.
+		items, err := readAll(ctx, i.Iter)
+		if err != nil {
+			return err
+		}
+		s.buffer = storage.NewStaticIterator[string](items)
 	}
 	return nil
+}
+
+func readAll(ctx context.Context, iter storage.Iterator[string]) ([]string, error) {
+	defer iter.Stop()
+	var items []string
+	for {
+		t, err := iter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return items, nil
+			}
+			return nil, err
+		}
+		items = append(items, t)
+	}
 }
 
 func (s *Stream) isDone() bool {

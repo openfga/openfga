@@ -232,7 +232,7 @@ func TestFastPathUnion(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
@@ -551,7 +551,7 @@ func TestFastPathIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
@@ -841,8 +841,8 @@ func TestFastPathIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
@@ -880,8 +880,8 @@ func TestFastPathIntersection(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		// this is to simulate successful remove of item 1
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
-		// the next get Head() is bad
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", fmt.Errorf("bad_head"))
+		// the next Next() is bad
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", fmt.Errorf("bad_next"))
 
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
@@ -954,7 +954,7 @@ func TestFastPathDifference(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
@@ -1288,7 +1288,7 @@ func TestFastPathDifference(t *testing.T) {
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter1}

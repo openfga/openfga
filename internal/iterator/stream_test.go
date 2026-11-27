@@ -49,6 +49,29 @@ func TestIteratorStream(t *testing.T) {
 			require.False(t, stream.sourceIsClosed)
 			require.NotNil(t, stream.buffer)
 		})
+		t.Run("fetch_from_source_reads_iterator_to_end", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			iter := mocks.NewMockIterator[string](ctrl)
+			gomock.InOrder(
+				iter.EXPECT().Next(gomock.Any()).Return("obj:1", nil),
+				iter.EXPECT().Next(gomock.Any()).Return("obj:2", nil),
+				iter.EXPECT().Next(gomock.Any()).Return("", storage.ErrIteratorDone),
+				iter.EXPECT().Stop(),
+			)
+
+			c := make(chan *Msg, 1)
+			stream := NewStream(0, c)
+			c <- &Msg{Iter: iter}
+			err := stream.fetchSource(context.Background())
+			require.NoError(t, err)
+			ctrl.Finish()
+
+			items, err := stream.Drain(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, []string{"obj:1", "obj:2"}, items)
+		})
 		t.Run("fetch_from_source_has_error", func(t *testing.T) {
 			c := make(chan *Msg, 1)
 			stream := NewStream(0, c)
