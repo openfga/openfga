@@ -1,10 +1,14 @@
 package storage
 
+//go:generate mockgen -source storage.go -destination ../../internal/mocks/mock_storage.go -package mocks OpenFGADatastore
+
 import (
 	"context"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/storage/adapter"
 )
 
 type ctxKey string
@@ -131,7 +135,9 @@ type ReadUsersetTuplesOptions struct {
 // ReadStartingWithUserOptions represents the options that can
 // be used with the ReadStartingWithUser method.
 type ReadStartingWithUserOptions struct {
-	Consistency                ConsistencyOptions
+	Consistency ConsistencyOptions
+	// WithResultsSortedAscending orders the results by object ID. The same object can appear more than once, e.g. for a
+	// user and for the public wildcard, so callers that need unique objects must deduplicate after filtering.
 	WithResultsSortedAscending bool
 }
 
@@ -150,6 +156,11 @@ type TupleBackend interface {
 // RelationshipTupleReader is an interface that defines the set of
 // methods required to read relationship tuples from a data store.
 type RelationshipTupleReader interface {
+	// Querier returns an adapter.Querier bound to this backend for executing typed query.Statement
+	// values at the given consistency, or nil if the backend does not support the typed-AST query
+	// surface. A non-nil Querier must support the full surface.
+	Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier
+
 	// Read the set of tuples associated with `store` and `tupleKey`, which may be nil or partially filled. If nil,
 	// Read will return an iterator over all the tuples in the given `store`. If the `tupleKey` is partially filled,
 	// it will return an iterator over those tuples which match the `tupleKey`. Note that at least one of `Object`

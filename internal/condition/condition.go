@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common"
-	celtypes "github.com/google/cel-go/common/types"
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common"
+	celtypes "cel.dev/cel-go/common/types"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/protobuf/types/known/structpb"
 

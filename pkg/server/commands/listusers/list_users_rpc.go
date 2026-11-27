@@ -1,6 +1,7 @@
 package listusers
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -247,7 +248,12 @@ func (l *listUsersQuery) ListUsers(
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
 		for foundUser := range foundUsersCh {
-			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
+			// A user may arrive from several sources, and has the relationship if any
+			// of them grants it.
+			key := tuple.UserProtoToString(foundUser.user)
+			if existing, ok := foundUsersUnique[key]; !ok || existing.relationshipStatus == NoRelationship {
+				foundUsersUnique[key] = foundUser
+			}
 
 			if l.maxResults > 0 {
 				if uint32(len(foundUsersUnique)) >= l.maxResults {
@@ -283,8 +289,9 @@ func (l *listUsersQuery) ListUsers(
 
 	select {
 	case err := <-expandErrCh:
-		if deadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
-			// We skip the error because we want to send at least partial results to the user (but we should probably set response headers)
+		if (deadlineExceeded || errors.Is(err, context.DeadlineExceeded)) && isOnlyContextError(err) {
+			// We skip the error because we want to send at least partial results to the user (but we should probably set response headers).
+			// Any other error may have truncated an exclusion's subtract operand, so the partial results could over-grant.
 			break
 		}
 		telemetry.TraceError(span, err)
@@ -318,6 +325,23 @@ func (l *listUsersQuery) ListUsers(
 			WasDatastoreThrottled: l.wasDatastoreThrottled,
 		},
 	}, nil
+}
+
+// isOnlyContextError reports whether every error within err, which may join
+// several, is a context cancellation or deadline error.
+func isOnlyContextError(err error) bool {
+	switch wrapped := err.(type) { //nolint:errorlint // unwraps each layer itself
+	case interface{ Unwrap() []error }:
+		for _, e := range wrapped.Unwrap() {
+			if !isOnlyContextError(e) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return isOnlyContextError(wrapped.Unwrap())
+	}
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUsersRequest) (bool, error) {
@@ -470,8 +494,10 @@ func (l *listUsersQuery) expandDirect(
 	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
+		// Once the context is done, report its error instead: the cancellation may
+		// have caused this one, and the request then returns partial results.
 		return expandResponse{
-			err: err,
+			err: cmp.Or(ctx.Err(), err),
 		}
 	}
 	defer iter.Stop()
@@ -491,7 +517,7 @@ LoopOnIterator:
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
 			if !errors.Is(err, storage.ErrIteratorDone) {
-				errs = errors.Join(errs, err)
+				errs = errors.Join(errs, cmp.Or(ctx.Err(), err))
 			}
 
 			break LoopOnIterator
@@ -505,7 +531,7 @@ LoopOnIterator:
 			condMet, err = eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
 		}
 		if err != nil {
-			errs = errors.Join(errs, err)
+			errs = errors.Join(errs, cmp.Or(ctx.Err(), err))
 			if !errors.Is(err, condition.ErrEvaluationFailed) {
 				break LoopOnIterator
 			}
@@ -582,53 +608,37 @@ func (l *listUsersQuery) expandIntersection(
 		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
 	}
 
-	var mu sync.Mutex
-
 	var wg sync.WaitGroup
 	wg.Add(len(childOperands))
 
-	wildcardCount := atomic.Uint32{}
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
-	foundUsersCountMap := make(map[string]uint32, 0)
-	excludedUsersMap := make(map[string]struct{}, 0)
+	// Per operand, the users it grants and the users excluded from each wildcard it
+	// found. Several sources may feed one operand, so an exclusion from one source
+	// must not cancel a grant from another.
+	operandFoundUsers := make([]map[string]struct{}, len(childOperands))
+	operandWildcardExclusions := make([][]map[string]struct{}, len(childOperands))
 	// Consumers must start before the producer pool below: a producer blocks on
 	// its second send into a size-1 channel until drained, so if the bounded
 	// pool fills before consumers run, the submit loop deadlocks.
-	for _, foundUsersChan := range intersectionFoundUsersChans {
-		go func(foundUsersChan chan foundUser) {
+	for i, foundUsersChan := range intersectionFoundUsersChans {
+		operandFoundUsers[i] = make(map[string]struct{})
+		go func(i int, foundUsersChan chan foundUser) {
 			defer wg.Done()
-			foundUsersMap := make(map[string]uint32, 0)
 			for foundUser := range foundUsersChan {
-				key := tuple.UserProtoToString(foundUser.user)
-				for _, excludedUser := range foundUser.excludedUsers {
-					key := tuple.UserProtoToString(excludedUser)
-					mu.Lock()
-					excludedUsersMap[key] = struct{}{}
-					mu.Unlock()
-				}
 				if foundUser.relationshipStatus == NoRelationship {
 					continue
 				}
-				foundUsersMap[key]++
-			}
-
-			_, wildcardExists := foundUsersMap[wildcardKey]
-			if wildcardExists {
-				wildcardCount.Add(1)
-			}
-			for userKey := range foundUsersMap {
-				mu.Lock()
-				// Increment the count for a user but decrement if a wildcard
-				// also exists to prevent double counting. This ensures accurate
-				// tracking for intersection criteria, avoiding inflated counts
-				// when both a user and a wildcard are present.
-				foundUsersCountMap[userKey]++
-				if wildcardExists {
-					foundUsersCountMap[userKey]--
+				key := tuple.UserProtoToString(foundUser.user)
+				operandFoundUsers[i][key] = struct{}{}
+				if key == wildcardKey {
+					excluded := make(map[string]struct{}, len(foundUser.excludedUsers))
+					for _, excludedUser := range foundUser.excludedUsers {
+						excluded[tuple.UserProtoToString(excludedUser)] = struct{}{}
+					}
+					operandWildcardExclusions[i] = append(operandWildcardExclusions[i], excluded)
 				}
-				mu.Unlock()
 			}
-		}(foundUsersChan)
+		}(i, foundUsersChan)
 	}
 
 	for i, rewrite := range childOperands {
@@ -651,22 +661,52 @@ func (l *listUsersQuery) expandIntersection(
 
 	wg.Wait()
 
-	excludedUsers := []*openfgav1.User{}
-	for key := range excludedUsersMap {
-		excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
+	// An operand grants a user directly or through a wildcard that does not exclude them.
+	operandGrants := func(i int, key string) bool {
+		if _, ok := operandFoundUsers[i][key]; ok {
+			return true
+		}
+		for _, excluded := range operandWildcardExclusions[i] {
+			if _, ok := excluded[key]; !ok {
+				return true
+			}
+		}
+		return false
+	}
+	intersectionGrants := func(key string) bool {
+		for i := range childOperands {
+			if !operandGrants(i, key) {
+				return false
+			}
+		}
+		return true
 	}
 
-	for key, count := range foundUsersCountMap {
-		// A user may have already been explicitly excluded by an operand, and cannot satisfy the intersection
-		// e.g. the banned relation here: `(member but not banned) and active`
-		if _, excluded := excludedUsersMap[key]; excluded {
-			continue
+	// Users excluded from some operand's wildcards stay excluded from the
+	// intersection's wildcard unless every operand grants them.
+	excludedUsersMap := make(map[string]struct{}, 0)
+	for _, wildcardExclusions := range operandWildcardExclusions {
+		for _, excluded := range wildcardExclusions {
+			for key := range excluded {
+				excludedUsersMap[key] = struct{}{}
+			}
 		}
-		// Compare the number of times the specific user was returned for
-		// all intersection operands plus the number of wildcards.
-		// If this summed value equals the number of operands, the user satisfies
-		// the intersection expression and can be sent on `foundUsersChan`
-		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
+	}
+	excludedUsers := []*openfgav1.User{}
+	for key := range excludedUsersMap {
+		if !intersectionGrants(key) {
+			excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
+		}
+	}
+
+	candidates := make(map[string]struct{}, 0)
+	for _, found := range operandFoundUsers {
+		for key := range found {
+			candidates[key] = struct{}{}
+		}
+	}
+	for key := range candidates {
+		if intersectionGrants(key) {
 			fu := foundUser{
 				user:          tuple.StringToUserProto(key),
 				excludedUsers: excludedUsers,
@@ -701,8 +741,12 @@ func (l *listUsersQuery) expandUnion(
 	var wg sync.WaitGroup
 	wg.Add(len(childOperands))
 
+	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	foundUsersMap := make(map[string]struct{}, 0)
-	excludedUsersCountMap := make(map[string]uint32, 0)
+	excludedUsersMap := make(map[string]struct{}, 0)
+	// The users excluded from each wildcard found, so that a wildcard only re-grants
+	// the users it does not itself exclude.
+	wildcardExclusions := []map[string]struct{}{}
 	// Consumers must start before the producer pool below: a producer blocks on
 	// its second send into a size-1 channel until drained, so if the bounded
 	// pool fills before consumers run, the submit loop deadlocks.
@@ -712,17 +756,20 @@ func (l *listUsersQuery) expandUnion(
 
 			for foundUser := range foundUsersChan {
 				key := tuple.UserProtoToString(foundUser.user)
+				excluded := make(map[string]struct{}, len(foundUser.excludedUsers))
 				for _, excludedUser := range foundUser.excludedUsers {
-					key := tuple.UserProtoToString(excludedUser)
-					mu.Lock()
-					excludedUsersCountMap[key]++
-					mu.Unlock()
-				}
-				if foundUser.relationshipStatus == NoRelationship {
-					continue
+					excluded[tuple.UserProtoToString(excludedUser)] = struct{}{}
 				}
 				mu.Lock()
-				foundUsersMap[key] = struct{}{}
+				for excludedKey := range excluded {
+					excludedUsersMap[excludedKey] = struct{}{}
+				}
+				if foundUser.relationshipStatus == HasRelationship {
+					foundUsersMap[key] = struct{}{}
+					if key == wildcardKey {
+						wildcardExclusions = append(wildcardExclusions, excluded)
+					}
+				}
 				mu.Unlock()
 			}
 		}(foundUsersChan)
@@ -748,9 +795,19 @@ func (l *listUsersQuery) expandUnion(
 
 	wg.Wait()
 
+	// A user excluded anywhere in the union stays excluded unless the union grants
+	// them, either directly or through a wildcard that does not exclude them.
+	// Otherwise a wildcard forwarded by the union would re-grant them.
 	excludedUsers := []*openfgav1.User{}
-	for key, count := range excludedUsersCountMap {
-		if count == uint32(len(childOperands)) {
+	for key := range excludedUsersMap {
+		_, granted := foundUsersMap[key]
+		for _, excluded := range wildcardExclusions {
+			if _, ok := excluded[key]; !ok {
+				granted = true
+				break
+			}
+		}
+		if !granted {
 			excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
 		}
 	}
@@ -795,17 +852,46 @@ func (l *listUsersQuery) expandExclusion(
 		close(subtractFoundUsersCh)
 	}()
 
+	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
+
 	baseFoundUsersMap := make(map[string]foundUser, 0)
+	// The base wildcard may arrive from several sources, and it only excludes the
+	// users that every copy excludes.
+	var baseWildcardExcluded map[string]struct{}
 	for fu := range baseFoundUsersCh {
 		key := tuple.UserProtoToString(fu.user)
-		baseFoundUsersMap[key] = fu
+		// A user may also arrive from several base sources, and has the relationship
+		// if any of them grants it.
+		if existing, ok := baseFoundUsersMap[key]; !ok || existing.relationshipStatus == NoRelationship {
+			baseFoundUsersMap[key] = fu
+		}
+		if key == wildcardKey && fu.relationshipStatus == HasRelationship {
+			baseWildcardExcluded = intersectUserKeys(baseWildcardExcluded, fu.excludedUsers)
+		}
 	}
 
 	subtractFoundUsersMap := make(map[string]foundUser, len(baseFoundUsersMap))
+	// As with base, the subtracted wildcard only excludes the users that every copy excludes.
+	var subtractWildcardExcluded map[string]struct{}
 
 	for fu := range subtractFoundUsersCh {
 		key := tuple.UserProtoToString(fu.user)
-		subtractFoundUsersMap[key] = fu
+		// As with base, a subtracted user has the relationship if any source grants it.
+		if existing, ok := subtractFoundUsersMap[key]; !ok || existing.relationshipStatus == NoRelationship {
+			subtractFoundUsersMap[key] = fu
+		}
+		if key == wildcardKey && fu.relationshipStatus == HasRelationship {
+			subtractWildcardExcluded = intersectUserKeys(subtractWildcardExcluded, fu.excludedUsers)
+		}
+	}
+
+	// A cancelled subtract operand may be missing users, and subtracting an
+	// incomplete set would grant them. Sends can still succeed after cancellation,
+	// so emit nothing.
+	if ctx.Err() != nil {
+		errs := errors.Join(ctx.Err(), baseError, subtractError)
+		telemetry.TraceError(span, errs)
+		return expandResponse{err: errs}
 	}
 
 	if subtractHasCycle {
@@ -819,13 +905,54 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
-
 	_, baseWildcardExists := baseFoundUsersMap[wildcardKey]
 	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
 
+	// The users carved out of a base wildcard, attached to the wildcard itself so that
+	// a union combining it with other sources knows which users it does not grant.
+	var wildcardExcludedUsers []*openfgav1.User
+	if baseWildcardExists {
+		for excludedKey := range baseWildcardExcluded {
+			if baseFu, ok := baseFoundUsersMap[excludedKey]; ok && baseFu.relationshipStatus == HasRelationship {
+				continue
+			}
+			wildcardExcludedUsers = append(wildcardExcludedUsers, tuple.StringToUserProto(excludedKey))
+		}
+		for subtractedUserKey, subtractedFu := range subtractFoundUsersMap {
+			if !tuple.IsTypedWildcard(subtractedUserKey) && subtractedFu.relationshipStatus == HasRelationship {
+				wildcardExcludedUsers = append(wildcardExcludedUsers, tuple.StringToUserProto(subtractedUserKey))
+			}
+		}
+	}
+
+	// The subtract branch has a user directly or through a wildcard that does not exclude them.
+	subtractGrants := func(key string) bool {
+		if subtractedFu, ok := subtractFoundUsersMap[key]; ok && subtractedFu.relationshipStatus == HasRelationship {
+			return true
+		}
+		_, excluded := subtractWildcardExcluded[key]
+		return subtractWildcardExists && !excluded
+	}
+
+	if baseWildcardExists && subtractWildcardExists {
+		// A subtracted wildcard does not take away the users it excludes, so those
+		// keep the relationship wherever the base grants them.
+		for excludedKey := range subtractWildcardExcluded {
+			if subtractGrants(excludedKey) {
+				continue
+			}
+			_, excludedFromBase := baseWildcardExcluded[excludedKey]
+			if baseFu, ok := baseFoundUsersMap[excludedKey]; !excludedFromBase || (ok && baseFu.relationshipStatus == HasRelationship) {
+				concurrency.TrySendThroughChannel(ctx, foundUser{
+					user:               tuple.StringToUserProto(excludedKey),
+					relationshipStatus: HasRelationship,
+				}, foundUsersChan)
+			}
+		}
+	}
+
 	for userKey, fu := range baseFoundUsersMap {
-		subtractedUser, userIsSubtracted := subtractFoundUsersMap[userKey]
+		_, userIsSubtracted := subtractFoundUsersMap[userKey]
 		_, wildcardSubtracted := subtractFoundUsersMap[wildcardKey]
 
 		switch {
@@ -833,10 +960,14 @@ func (l *listUsersQuery) expandExclusion(
 			if !userIsSubtracted && !wildcardSubtracted {
 				// Preserve the relationship status and exclusions the base branch
 				// already determined in case base on its own contains another exclusion.
+				excludedUsers := fu.excludedUsers
+				if userKey == wildcardKey {
+					excludedUsers = wildcardExcludedUsers
+				}
 				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: fu.relationshipStatus,
-					excludedUsers:      fu.excludedUsers,
+					excludedUsers:      excludedUsers,
 				}, foundUsersChan)
 			}
 
@@ -851,11 +982,20 @@ func (l *listUsersQuery) expandExclusion(
 					continue
 				}
 
-				if subtractedFu.relationshipStatus == NoRelationship {
-					concurrency.TrySendThroughChannel(ctx, foundUser{
-						user:               tuple.StringToUserProto(subtractedUserKey),
-						relationshipStatus: HasRelationship,
-					}, foundUsersChan)
+				// Another subtract source may still grant a user that one source reports
+				// without the relationship.
+				if subtractedFu.relationshipStatus == NoRelationship && !subtractGrants(subtractedUserKey) {
+					// Only surface the subtracted user as having the relationship when the base
+					// grants them, directly or through a wildcard that does not exclude them. When
+					// the base is a wildcard carve-out (e.g. `user:* but not member`), re-inflating
+					// an excluded user here would return a user that Check denies.
+					_, excludedFromBase := baseWildcardExcluded[subtractedUserKey]
+					if baseFu, ok := baseFoundUsersMap[subtractedUserKey]; !excludedFromBase || (ok && baseFu.relationshipStatus == HasRelationship) {
+						concurrency.TrySendThroughChannel(ctx, foundUser{
+							user:               tuple.StringToUserProto(subtractedUserKey),
+							relationshipStatus: HasRelationship,
+						}, foundUsersChan)
+					}
 				}
 
 				// a found user under the subtracted branch causes the subtracted user to have a negated relationship with respect
@@ -871,14 +1011,12 @@ func (l *listUsersQuery) expandExclusion(
 				}
 			}
 		case subtractWildcardExists, userIsSubtracted:
-			if subtractedUser.relationshipStatus == HasRelationship {
+			if subtractGrants(userKey) {
 				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: NoRelationship,
 				}, foundUsersChan)
-			}
-
-			if subtractedUser.relationshipStatus == NoRelationship {
+			} else if fu.relationshipStatus == HasRelationship {
 				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: HasRelationship,
@@ -900,6 +1038,21 @@ func (l *listUsersQuery) expandExclusion(
 	return expandResponse{
 		err: errs,
 	}
+}
+
+// intersectUserKeys narrows common to the keys of users that it also holds. A nil common
+// map means nothing has been intersected yet, so every user is kept. It is used to narrow
+// the users excluded from a wildcard, which may arrive from several sources, to those
+// that every copy excludes.
+func intersectUserKeys(common map[string]struct{}, users []*openfgav1.User) map[string]struct{} {
+	narrowed := make(map[string]struct{}, len(users))
+	for _, user := range users {
+		key := tuple.UserProtoToString(user)
+		if _, ok := common[key]; ok || common == nil {
+			narrowed[key] = struct{}{}
+		}
+	}
+	return narrowed
 }
 
 func (l *listUsersQuery) expandTTU(
@@ -926,8 +1079,10 @@ func (l *listUsersQuery) expandTTU(
 	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
+		// Once the context is done, report its error instead: the cancellation may
+		// have caused this one, and the request then returns partial results.
 		return expandResponse{
-			err: err,
+			err: cmp.Or(ctx.Err(), err),
 		}
 	}
 	defer iter.Stop()
@@ -947,7 +1102,7 @@ LoopOnIterator:
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
 			if !errors.Is(err, storage.ErrIteratorDone) {
-				errs = errors.Join(errs, err)
+				errs = errors.Join(errs, cmp.Or(ctx.Err(), err))
 			}
 
 			break LoopOnIterator
@@ -961,7 +1116,7 @@ LoopOnIterator:
 			condMet, err = eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
 		}
 		if err != nil {
-			errs = errors.Join(errs, err)
+			errs = errors.Join(errs, cmp.Or(ctx.Err(), err))
 			if !errors.Is(err, condition.ErrEvaluationFailed) {
 				break LoopOnIterator
 			}

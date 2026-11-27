@@ -2,6 +2,7 @@ package iterator
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/openfga/openfga/internal/concurrency"
@@ -63,6 +64,9 @@ func (c *channelIterator) Next(ctx context.Context) (string, error) {
 				return "", ctx.Err()
 			case msg, ok := <-c.source:
 				if !ok {
+					if ctx.Err() != nil {
+						return "", ctx.Err()
+					}
 					return "", storage.ErrIteratorDone
 				}
 				if msg.Err != nil {
@@ -78,7 +82,7 @@ func (c *channelIterator) Next(ctx context.Context) (string, error) {
 		// Try to get next from current iterator
 		val, err := c.current.Next(ctx)
 		if err != nil {
-			if storage.IterIsDoneOrCancelled(err) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				c.current.Stop()
 				c.current = nil
 				continue // Fetch next iterator
@@ -103,6 +107,9 @@ func (c *channelIterator) Head(ctx context.Context) (string, error) {
 				return "", ctx.Err()
 			case msg, ok := <-c.source:
 				if !ok {
+					if ctx.Err() != nil {
+						return "", ctx.Err()
+					}
 					return "", storage.ErrIteratorDone
 				}
 				if msg.Err != nil {
@@ -118,7 +125,7 @@ func (c *channelIterator) Head(ctx context.Context) (string, error) {
 		// Try to get head from current iterator
 		val, err := c.current.Head(ctx)
 		if err != nil {
-			if storage.IterIsDoneOrCancelled(err) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				c.current.Stop()
 				c.current = nil
 				continue // Fetch next iterator

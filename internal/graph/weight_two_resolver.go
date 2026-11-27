@@ -135,7 +135,10 @@ func (c *LocalChecker) weight2(ctx context.Context, leftChans []<-chan *iterator
 		return nil, ctx.Err()
 	case r, ok := <-rightChan:
 		if !ok {
-			return res, ctx.Err()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return res, nil
 		}
 		if r.err != nil {
 			return nil, r.err
@@ -155,10 +158,11 @@ ConsumerLoop:
 			if !ok {
 				leftOpen = false
 				leftChan = nil
+				if ctx.Err() != nil {
+					lastErr = ctx.Err()
+					break ConsumerLoop
+				}
 				if leftSet.Size() == 0 {
-					if ctx.Err() != nil {
-						lastErr = ctx.Err()
-					}
 					break ConsumerLoop
 				}
 				break
@@ -171,11 +175,12 @@ ConsumerLoop:
 				t, err := msg.Iter.Next(ctx)
 				if err != nil {
 					msg.Iter.Stop()
-					if storage.IterIsDoneOrCancelled(err) {
-						break
+					if !errors.Is(err, storage.ErrIteratorDone) {
+						lastErr = err
 					}
-					lastErr = err
-					continue
+					// Do not read again: a stopped iterator may keep returning its error (Dedupe reads Head, which the
+					// ordered merge caches), and a match from another iterator can still override lastErr.
+					break
 				}
 				if processUsersetMessage(t, leftSet, rightSet) {
 					msg.Iter.Stop()
@@ -188,6 +193,10 @@ ConsumerLoop:
 			if !ok {
 				rightOpen = false
 				rightChan = nil
+				if ctx.Err() != nil {
+					lastErr = ctx.Err()
+					break ConsumerLoop
+				}
 				break
 			}
 			if msg.err != nil {
@@ -201,7 +210,10 @@ ConsumerLoop:
 			}
 		}
 	}
-	return res, lastErr
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return res, nil
 }
 
 // member: [user, user:*]
@@ -258,7 +270,8 @@ func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterat
 		return nil, err
 	}
 	iterChan := make(chan *iterator.Msg, 1)
-	iter := storage.WrapIterator(storage.ObjectIDKind, i)
+	// The sorted merge keeps a user's and the wildcard's tuple for the same object; fastPathDifference needs unique IDs.
+	iter := iterator.Dedupe(storage.WrapIterator(storage.ObjectIDKind, i))
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
 	}
@@ -304,10 +317,6 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 	batch := make([]string, 0)
 
 	defer func() {
-		// flush
-		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
-		}
 		close(outChan)
 		streams.Stop()
 	}()
@@ -333,7 +342,7 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 		for idx, stream := range iterStreams {
 			v, err := stream.Head(ctx)
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
+				if errors.Is(err, storage.ErrIteratorDone) {
 					allIters = false
 					// we need to ensure we have all iterators at all times
 					break
@@ -370,16 +379,16 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 			return
 		}
 	}
+
+	if len(batch) > 0 {
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+	}
 }
 
 func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
-		// flush
-		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
-		}
 		close(outChan)
 		streams.Stop()
 	}()
@@ -402,7 +411,7 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 		}
 		if len(iterStreams) != childrenTotal {
 			// short circuit
-			return
+			break
 		}
 
 		maxObject := ""
@@ -411,7 +420,7 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 		for idx, stream := range iterStreams {
 			v, err := stream.Head(ctx)
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
+				if errors.Is(err, storage.ErrIteratorDone) {
 					allIters = false
 					// we need to ensure we have all iterators at all times
 					break
@@ -460,16 +469,16 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 			}
 		}
 	}
+
+	if len(batch) > 0 {
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+	}
 }
 
 func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
-		// flush
-		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
-		}
 		close(outChan)
 		streams.Stop()
 	}()
@@ -495,7 +504,7 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 		for idx, stream := range iterStreams {
 			v, err := stream.Head(ctx)
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
+				if errors.Is(err, storage.ErrIteratorDone) {
 					allIters = false
 					// we need to ensure we have all iterators at all times
 					break
@@ -578,6 +587,10 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 				return
 			}
 		}
+	}
+
+	if len(batch) > 0 {
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
 	}
 }
 

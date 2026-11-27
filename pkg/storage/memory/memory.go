@@ -19,6 +19,7 @@ import (
 
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -194,6 +195,11 @@ func WithMaxTuplesPerWrite(n int) StorageOption {
 // ensuring that models remain manageable and within predefined resource constraints.
 func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTypesPerAuthorizationModel = n }
+}
+
+// Querier see [storage.RelationshipTupleReader].Querier.
+func (s *MemoryBackend) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
+	return nil
 }
 
 // Close does not do anything for [MemoryBackend].

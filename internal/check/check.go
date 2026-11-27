@@ -357,6 +357,9 @@ func (r *Resolver) executeStrategy(ctx context.Context, selector planner.Selecto
 	res, err := fn()
 	duration := time.Since(start)
 	span.SetAttributes(attribute.Int64("strategy_duration_ms", duration.Milliseconds()))
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		// penalize plans that timeout from the upstream context
 		if errors.Is(err, context.DeadlineExceeded) {

@@ -1437,3 +1437,166 @@ func TestIterIsDoneOrCancelled(t *testing.T) {
 		require.Equal(t, tt.expected, output)
 	}
 }
+
+func TestOrderedMergeIterator(t *testing.T) {
+	ctx := context.Background()
+
+	collect := func(t *testing.T, iter TupleIterator) []string {
+		t.Helper()
+		var got []string
+		for {
+			tup, err := iter.Next(ctx)
+			if errors.Is(err, ErrIteratorDone) {
+				return got
+			}
+			require.NoError(t, err)
+			got = append(got, tuple.TupleKeyToString(tup.GetKey()))
+		}
+	}
+
+	t.Run("keeps_same_object_tuples_from_one_iterator", func(t *testing.T) {
+		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "member", "user:a")},
+			{Key: tuple.NewTupleKey("group:1", "member", "user:*")},
+		})
+		iter := NewOrderedMergeIterator(ObjectMapper(), iter1)
+		t.Cleanup(iter.Stop)
+
+		require.Equal(t, []string{"group:1#member@user:a", "group:1#member@user:*"}, collect(t, iter))
+	})
+
+	t.Run("keeps_same_object_tuples_across_iterators_lowest_index_first", func(t *testing.T) {
+		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "member", "user:a")},
+			{Key: tuple.NewTupleKey("group:3", "member", "user:a")},
+		})
+		iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "member", "user:*")},
+			{Key: tuple.NewTupleKey("group:2", "member", "user:*")},
+		})
+		iter := NewOrderedMergeIterator(ObjectMapper(), iter1, iter2)
+		t.Cleanup(iter.Stop)
+
+		require.Equal(t, []string{
+			"group:1#member@user:a",
+			"group:1#member@user:*",
+			"group:2#member@user:*",
+			"group:3#member@user:a",
+		}, collect(t, iter))
+	})
+
+	t.Run("head_matches_next_with_same_object_tuples", func(t *testing.T) {
+		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "member", "user:a")},
+			{Key: tuple.NewTupleKey("group:1", "member", "user:*")},
+		})
+		iter := NewOrderedMergeIterator(ObjectMapper(), iter1)
+		t.Cleanup(iter.Stop)
+
+		head, err := iter.Head(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "group:1#member@user:a", tuple.TupleKeyToString(head.GetKey()))
+		_, err = iter.Next(ctx)
+		require.NoError(t, err)
+
+		head, err = iter.Head(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "group:1#member@user:*", tuple.TupleKeyToString(head.GetKey()))
+	})
+
+	t.Run("still_errors_on_unsorted_input", func(t *testing.T) {
+		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:2", "member", "user:a")},
+			{Key: tuple.NewTupleKey("group:1", "member", "user:a")},
+		})
+		iter := NewOrderedMergeIterator(ObjectMapper(), iter1)
+		t.Cleanup(iter.Stop)
+
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+		_, err = iter.Next(ctx)
+		require.ErrorContains(t, err, "iterator 0 is not in ascending order")
+	})
+
+	t.Run("deduping_constructor_still_discards_same_object_tuples", func(t *testing.T) {
+		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "member", "user:a")},
+			{Key: tuple.NewTupleKey("group:1", "member", "user:*")},
+		})
+		iter := NewOrderedCombinedIterator(ObjectMapper(), iter1)
+		t.Cleanup(iter.Stop)
+
+		require.Equal(t, []string{"group:1#member@user:a"}, collect(t, iter))
+	})
+}
+
+func TestKeepTupleIterator(t *testing.T) {
+	ctx := context.Background()
+	newIter := func() TupleIterator {
+		return NewKeepTupleIterator(NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "member", "user:drop")},
+			{Key: tuple.NewTupleKey("group:2", "member", "user:keep")},
+			{Key: tuple.NewTupleKey("group:3", "member", "user:drop")},
+			{Key: tuple.NewTupleKey("group:4", "member", "user:keep")},
+		}), func(tup *openfgav1.Tuple) bool { return tup.GetKey().GetUser() == "user:keep" })
+	}
+
+	t.Run("head_skips_dropped_and_is_stable", func(t *testing.T) {
+		iter := newIter()
+		t.Cleanup(iter.Stop)
+		for range 2 {
+			head, err := iter.Head(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "group:2", head.GetKey().GetObject())
+		}
+		next, err := iter.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "group:2", next.GetKey().GetObject())
+		head, err := iter.Head(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "group:4", head.GetKey().GetObject())
+	})
+
+	t.Run("next_skips_dropped_then_done", func(t *testing.T) {
+		iter := newIter()
+		t.Cleanup(iter.Stop)
+		var got []string
+		for {
+			tup, err := iter.Next(ctx)
+			if errors.Is(err, ErrIteratorDone) {
+				break
+			}
+			require.NoError(t, err)
+			got = append(got, tup.GetKey().GetObject())
+		}
+		require.Equal(t, []string{"group:2", "group:4"}, got)
+		_, err := iter.Head(ctx)
+		require.ErrorIs(t, err, ErrIteratorDone)
+	})
+
+	t.Run("all_dropped_is_done", func(t *testing.T) {
+		iter := NewKeepTupleIterator(NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "member", "user:drop")},
+		}), func(*openfgav1.Tuple) bool { return false })
+		t.Cleanup(iter.Stop)
+		_, err := iter.Head(ctx)
+		require.ErrorIs(t, err, ErrIteratorDone)
+	})
+}
+
+type stopCountingTupleIterator struct {
+	TupleIterator
+	stops int
+}
+
+func (s *stopCountingTupleIterator) Stop() { s.stops++ }
+
+func TestKeepTupleIteratorStop(t *testing.T) {
+	inner := &stopCountingTupleIterator{TupleIterator: NewStaticTupleIterator(nil)}
+	iter := NewKeepTupleIterator(inner, func(*openfgav1.Tuple) bool { return true })
+
+	iter.Stop()
+	iter.Stop()
+
+	require.Equal(t, 1, inner.stops, "Stop must reach the inner iterator exactly once")
+}

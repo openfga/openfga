@@ -2817,3 +2817,46 @@ func TestWithServiceName(t *testing.T) {
 		require.Equal(t, "openfga.v1.ShadowOpenFGAService", s.serviceName)
 	})
 }
+
+func TestWithRequestTimeout(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("defaults_to_default_request_timeout", func(t *testing.T) {
+		s := MustNewServerWithOpts(WithDatastore(memory.New()))
+		t.Cleanup(s.Close)
+
+		require.Equal(t, serverconfig.DefaultRequestTimeout, s.requestTimeout)
+	})
+
+	t.Run("overrides_request_timeout", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithRequestTimeout(5*time.Second),
+		)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, 5*time.Second, s.requestTimeout)
+	})
+
+	t.Run("zero_keeps_default_request_timeout", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithRequestTimeout(0),
+		)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, serverconfig.DefaultRequestTimeout, s.requestTimeout)
+	})
+
+	t.Run("negative_keeps_default_request_timeout", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithRequestTimeout(-time.Second),
+		)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, serverconfig.DefaultRequestTimeout, s.requestTimeout)
+	})
+}
