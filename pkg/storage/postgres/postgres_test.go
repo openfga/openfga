@@ -26,6 +26,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -1909,4 +1910,54 @@ func TestExecuteInsertChanges(t *testing.T) {
 		err := executeInsertChanges(context.Background(), mockPgxExec, writeItems)
 		require.ErrorContains(t, err, "sql error: error")
 	})
+}
+
+// A union in the weight two fast path must not hold a pool connection while it waits for another.
+func TestWeight2UnionWithSingleConnectionPool(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	ds, err := New(testDatastore.GetConnectionURI(true), sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(1)))
+	require.NoError(t, err)
+	t.Cleanup(ds.Close)
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define owner: [user]
+				define viewer: [user] or owner
+		type doc
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent`)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
+	storeID := ulid.Make().String()
+	err = ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tupleUtils.NewTupleKey("doc:1", "parent", "folder:1"),
+		tupleUtils.NewTupleKey("folder:0", "viewer", "user:anne"),
+		tupleUtils.NewTupleKey("folder:1", "viewer", "user:anne"),
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+	checker := graph.NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	resp, err := checker.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tupleUtils.NewTupleKey("doc:1", "viewer", "user:anne"),
+		RequestMetadata:      graph.NewCheckRequestMetadata(),
+		SelectedStrategy:     "weight2",
+	})
+	require.NoError(t, err)
+	require.True(t, resp.GetAllowed())
 }
