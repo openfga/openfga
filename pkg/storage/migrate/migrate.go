@@ -91,7 +91,16 @@ func RunMigrations(cfg MigrationConfig) error {
 		} else if dbURI.User != nil {
 			password, _ = dbURI.User.Password()
 		}
-		dbURI.User = url.UserPassword(username, password)
+		// An empty password must stay out of the URI: pgx only falls back to
+		// PGPASSFILE (or ~/.pgpass) when the URI sets none, as `openfga run` does.
+		switch {
+		case password != "":
+			dbURI.User = url.UserPassword(username, password)
+		case username != "":
+			dbURI.User = url.User(username)
+		default:
+			dbURI.User = nil
+		}
 
 		// Replace CLI uri with the one we just updated.
 		uri = dbURI.String()
